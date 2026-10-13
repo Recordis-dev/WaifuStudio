@@ -130,23 +130,37 @@ def classify_safetensors_file(path: Path) -> tuple[str, bytes]:
     return "unknown", raw_header
 
 
+def _clean_fallback_trigger(text: str) -> str:
+    cleaned = " ".join(str(text or "").split())
+    if not cleaned:
+        return ""
+    stripped = re.sub(
+        r"(?:\s+[-_|]?\s*(?:style|lora|sdxl|xl|illustrious|illu|noobai|anima|v\d+(?:\.\d+)?))+$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+    return stripped or cleaned
+
+
 def _smart_infer_trigger(raw_header: bytes, fallback_trigger: str, stem: str = "") -> str:
     """Extrae el trigger de personaje/estilo ignorando tags genericos de booru."""
+    clean_fb = _clean_fallback_trigger(fallback_trigger)
     header = safetensors_header(raw_header)
     if not isinstance(header, dict):
-        return fallback_trigger
+        return clean_fb
     meta = header.get("__metadata__")
     if not isinstance(meta, dict):
-        return fallback_trigger
+        return clean_fb
     raw_freq = meta.get("ss_tag_frequency")
     if not isinstance(raw_freq, str) or not raw_freq.strip():
-        return fallback_trigger
+        return clean_fb
     try:
         data = json.loads(raw_freq)
     except ValueError:
-        return fallback_trigger
+        return clean_fb
     if not isinstance(data, dict):
-        return fallback_trigger
+        return clean_fb
     counts: dict[str, int] = {}
     for ds in data.values():
         if not isinstance(ds, dict):
@@ -179,7 +193,7 @@ def _smart_infer_trigger(raw_header: bytes, fallback_trigger: str, stem: str = "
         best_tag, best_cnt = max(counts.items(), key=lambda kv: kv[1])
         if best_cnt >= 10:
             return best_tag
-    return fallback_trigger
+    return clean_fb
 
 
 def scan_disk_models(cfg: Any, registry: ModelRegistry | None = None) -> list[dict]:
@@ -258,7 +272,7 @@ def scan_disk_models(cfg: Any, registry: ModelRegistry | None = None) -> list[di
             )
             defaults = {
                 "steps": 28,
-                "cfg": 5.5,
+                "cfg": 3.5,
                 "sampler_name": "euler_ancestral",
                 "scheduler": "normal",
                 "width": 1024,

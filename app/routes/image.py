@@ -27,7 +27,7 @@ from app.graphs import (
     patch_params,
     to_img2img,
 )
-from app.loras import validate_selection
+from app.loras import get as get_lora, validate_selection
 from app.params import is_valid_sampler, is_valid_scheduler
 from app.preprompts import DEFAULT_PREPROMPT, get_preprompt
 from app.progress import ProgressTracker
@@ -53,6 +53,30 @@ def _merge_tags(parts: list[str]) -> str:
                 seen.add(folded)
                 merged.append(tag)
     return ", ".join(merged)
+
+
+def _inject_lora_triggers(prompt: str, validated_loras: list[dict]) -> str:
+    """Inyecta los triggers de los LoRAs activos si no estan ya en el prompt."""
+    if not validated_loras:
+        return prompt
+    lower_prompt = prompt.lower()
+    triggers: list[str] = []
+    for item in validated_loras:
+        lora_id = item.get("id")
+        if not isinstance(lora_id, str) or not lora_id.strip():
+            continue
+        try:
+            lora_entry = get_lora(lora_id.strip())
+        except EngineError:
+            continue
+        trigger = str(lora_entry.get("trigger") or "").strip()
+        if not trigger:
+            continue
+        if trigger.lower() not in lower_prompt and trigger.lower().replace("_", " ") not in lower_prompt.replace("_", " "):
+            triggers.append(trigger)
+    if not triggers:
+        return prompt
+    return _merge_tags([*triggers, prompt])
 
 
 def _set_text_nodes(graph: dict, positive: str, negative: str) -> dict:
@@ -173,16 +197,18 @@ def run_generation(
         graph = load_graph(DEFAULT_GRAPH_PATH)
         graph = patch_model(graph, entry, seed=params.get("seed"))
         raw_loras = job.get("loras")
+        validated_loras = validate_selection([] if raw_loras is None else raw_loras)
         graph = apply_loras(
             graph,
-            validate_selection([] if raw_loras is None else raw_loras),
+            validated_loras,
             model_id=job.get("model_id"),
         )
         applied = {key: params[key] for key in PARAM_KEYS if params.get(key) is not None}
         graph = patch_params(graph, **applied)
         preprompt = job.get("preprompt") or entry.preprompt or DEFAULT_PREPROMPT
+        prompt_text = _inject_lora_triggers(job["prompt"], validated_loras)
         positive, negative = apply_preprompt(
-            job["prompt"], family=entry.family, name=preprompt
+            prompt_text, family=entry.family, name=preprompt
         )
         graph = _set_text_nodes(
             graph, positive, _merge_tags([job.get("negative") or "", negative])

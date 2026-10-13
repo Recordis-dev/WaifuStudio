@@ -610,8 +610,13 @@ class CheckpointModelGraphTests(unittest.TestCase):
         patched = apply_loras(
             patched, [{"file": "Stuffyai Style.safetensors", "weight": 0.9}]
         )
+        self.assertEqual(patched["lora_1"]["class_type"], "LoraLoader")
         self.assertEqual(patched["lora_1"]["inputs"]["model"], ["1", 0])
+        self.assertEqual(patched["lora_1"]["inputs"]["clip"], ["1", 1])
+        self.assertEqual(patched["lora_1"]["inputs"]["strength_clip"], 0.9)
         self.assertEqual(patched["7"]["inputs"]["model"], ["lora_1", 0])
+        self.assertEqual(patched["4"]["inputs"]["clip"], ["lora_1", 1])
+        self.assertEqual(patched["5"]["inputs"]["clip"], ["lora_1", 1])
         img2img = to_img2img(patched, "input.png", 0.65)
         self.assertEqual(img2img[IMG_ENC_ID]["inputs"]["vae"], ["1", 2])
 

@@ -344,6 +344,20 @@ def _rewire_model_inputs(graph: dict, loader_id: str, target_id: str) -> None:
                 inputs[key] = [target_id, 0]
 
 
+def _rewire_clip_inputs(graph: dict, loader_id: str, target_id: str) -> None:
+    for node in graph.values():
+        if not isinstance(node, dict):
+            continue
+        inputs = node.get("inputs")
+        if not isinstance(inputs, dict):
+            continue
+        for key, value in inputs.items():
+            if key != "clip" or not isinstance(value, (list, tuple)) or len(value) < 2:
+                continue
+            if str(value[0]) == loader_id and value[1] == 1:
+                inputs[key] = [target_id, 1]
+
+
 def apply_loras(
     graph: dict, loras: list[dict], model_id: str | None = None
 ) -> dict:
@@ -353,7 +367,9 @@ def apply_loras(
     si falta ``file`` (o ``weight``) se resuelven por ``id`` en
     ``registry/loras.json`` (default 1.0 sin id). El primer nodo engancha al
     ``UNETLoader`` (o ``UnetLoaderGGUF``) y el ultimo sustituye al loader en todo
-    input ``model`` que apuntara a el.
+    input ``model`` que apuntara a el. Si el loader es ``CheckpointLoaderSimple``,
+    usa ``LoraLoader`` (aplicando ``strength_model`` y ``strength_clip``) y
+    rewirea tambien el ``clip`` hacia los ``CLIPTextEncode``.
 
     Si ``model_id`` corresponde a un modelo expandido Anima (definido en
     ``ANIMA_EXPANDED_MODELS``, como ``anima-2.9b-preview`` de 40 bloques), se usa la clase
@@ -375,13 +391,22 @@ def apply_loras(
         raise EngineError(
             "grafo sin UNETLoader/UnetLoaderGGUF: no se pueden aplicar LoRAs"
         )
-    loader_id, _loader_node = loader
+    loader_id, loader_node = loader
+    is_checkpoint = loader_node.get("class_type") == "CheckpointLoaderSimple"
 
     use_patch = False
-    if model_id is not None and model_id.strip().lower() in ANIMA_EXPANDED_MODELS:
+    if (
+        not is_checkpoint
+        and model_id is not None
+        and model_id.strip().lower() in ANIMA_EXPANDED_MODELS
+    ):
         use_patch = True
 
-    node_class = ANIMA_PATCH_CLASS if use_patch else LORA_CLASS
+    node_class = (
+        "LoraLoader"
+        if is_checkpoint
+        else (ANIMA_PATCH_CLASS if use_patch else LORA_CLASS)
+    )
 
     for index in range(1, len(loras) + 1):
         node_id = f"{LORA_ID_PREFIX}{index}"
@@ -394,18 +419,33 @@ def apply_loras(
                 f"lora #{position}: entrada invalida (se esperaba objeto JSON)"
             )
         chain.append(_resolve_lora(item, position))
-    _rewire_model_inputs(patched, loader_id, f"{LORA_ID_PREFIX}{len(chain)}")
+    last_lora_id = f"{LORA_ID_PREFIX}{len(chain)}"
+    _rewire_model_inputs(patched, loader_id, last_lora_id)
+    if is_checkpoint:
+        _rewire_clip_inputs(patched, loader_id, last_lora_id)
     previous = loader_id
     for index, (file, weight) in enumerate(chain, start=1):
         node_id = f"{LORA_ID_PREFIX}{index}"
-        patched[node_id] = {
-            "class_type": node_class,
-            "inputs": {
-                "model": [previous, 0],
-                "lora_name": file,
-                "strength_model": weight,
-            },
-        }
+        if is_checkpoint:
+            patched[node_id] = {
+                "class_type": node_class,
+                "inputs": {
+                    "model": [previous, 0],
+                    "clip": [previous, 1],
+                    "lora_name": file,
+                    "strength_model": weight,
+                    "strength_clip": weight,
+                },
+            }
+        else:
+            patched[node_id] = {
+                "class_type": node_class,
+                "inputs": {
+                    "model": [previous, 0],
+                    "lora_name": file,
+                    "strength_model": weight,
+                },
+            }
         previous = node_id
     return patched
 
