@@ -129,8 +129,25 @@ function setSizeFromDefaults(width, height) {
   }
 }
 
+async function refreshModelsCatalog() {
+  const models = await api("/api/models?scan=1");
+  state.models = models || [];
+  const select = $("model");
+  if (!select) {
+    return;
+  }
+  const previous = select.value;
+  select.replaceChildren();
+  for (const model of state.models) {
+    select.appendChild(option(model.id, model.display_name || model.id));
+  }
+  if (previous && state.models.some((m) => m.id === previous)) {
+    select.value = previous;
+  }
+}
+
 async function loadModels() {
-  state.models = await api("/api/models");
+  state.models = await api("/api/models?scan=1");
   const select = $("model");
   select.replaceChildren();
   for (const model of state.models) {
@@ -610,6 +627,15 @@ function initImageTab() {
       }
     });
   }
+  window.addEventListener("waifu:models-refresh", () => {
+    refreshModelsCatalog().catch((err) => console.warn("models refresh:", err));
+  });
+  on("btn-reload", "click", () => {
+    refreshModelsCatalog().catch((err) => console.warn("models reload:", err));
+    loadLoras({ preserveSelection: true }).catch((err) =>
+      console.warn("loras reload:", err)
+    );
+  });
 }
 
 export {
@@ -617,6 +643,7 @@ export {
   loadFormats,
   applySizeSelection,
   setSizeFromDefaults,
+  refreshModelsCatalog,
   loadModels,
   loadPrepromptOptions,
   applyModel,

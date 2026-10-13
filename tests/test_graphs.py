@@ -576,6 +576,47 @@ class PrepareH3Ref2VAGraphTests(unittest.TestCase):
         self.assertEqual(graph["136"]["inputs"]["branch_weights"], "auto")
 
 
+class CheckpointModelGraphTests(unittest.TestCase):
+    def make_ckpt_entry(self) -> ModelEntry:
+        return ModelEntry(
+            id="vidrohah-v1.2",
+            family="anima",
+            display_name="Vidrohah-v1.2",
+            profile=ModelProfile(
+                unet_name="Vidrohah-v1.2.safetensors",
+                clip_name="__checkpoint__",
+                clip_type="checkpoint",
+                vae_name="__checkpoint__",
+            ),
+            source="auto-detectado",
+            license="local",
+        )
+
+    def test_patch_model_checkpoint_replaces_loaders_and_rewires(self):
+        patched = patch_model(real_graph(), self.make_ckpt_entry(), seed=777)
+        self.assertEqual(patched["1"]["class_type"], "CheckpointLoaderSimple")
+        self.assertEqual(
+            patched["1"]["inputs"]["ckpt_name"], "Vidrohah-v1.2.safetensors"
+        )
+        self.assertNotIn("2", patched)
+        self.assertNotIn("3", patched)
+        self.assertEqual(patched["4"]["inputs"]["clip"], ["1", 1])
+        self.assertEqual(patched["5"]["inputs"]["clip"], ["1", 1])
+        self.assertEqual(patched["8"]["inputs"]["vae"], ["1", 2])
+        self.assertEqual(patched["7"]["inputs"]["seed"], 777)
+
+    def test_apply_loras_and_img2img_work_with_checkpoint_loader(self):
+        patched = patch_model(real_graph(), self.make_ckpt_entry())
+        patched = apply_loras(
+            patched, [{"file": "Stuffyai Style.safetensors", "weight": 0.9}]
+        )
+        self.assertEqual(patched["lora_1"]["inputs"]["model"], ["1", 0])
+        self.assertEqual(patched["7"]["inputs"]["model"], ["lora_1", 0])
+        img2img = to_img2img(patched, "input.png", 0.65)
+        self.assertEqual(img2img[IMG_ENC_ID]["inputs"]["vae"], ["1", 2])
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

@@ -23,7 +23,7 @@ LORA_CLASS = "LoraLoaderModelOnly"
 ANIMA_PATCH_CLASS = "WaifuAnimaPatch28to40"
 ANIMA_EXPANDED_MODELS = frozenset({"anima-2.9b-preview"})
 LORA_ID_PREFIX = "lora_"
-UNET_LOADER_CLASSES = ("UNETLoader", "UnetLoaderGGUF")
+UNET_LOADER_CLASSES = ("UNETLoader", "UnetLoaderGGUF", "CheckpointLoaderSimple")
 LORA_WEIGHT_MIN = 0.0
 LORA_WEIGHT_MAX = 2.0
 
@@ -142,23 +142,64 @@ def patch_model(graph: dict, entry: object, seed: int | None = None) -> dict:
 
     UNETLoader toma ``profile.unet_name``, CLIPLoader ``clip_name``+``clip_type``
     (widget ``type``, o ``clip_type`` si el grafo ya usa ese nombre) y VAELoader
-    ``vae_name``. La seed se fija en todo nodo con widget ``seed``. EngineError si
-    falta alguno de los tres loaders, si el perfil es invalido o si ``seed`` viene
-    y no hay ningun nodo con widget ``seed``.
+    ``vae_name``. Si ``clip_type == 'checkpoint'``, convierte UNETLoader en
+    CheckpointLoaderSimple y rewirea las salidas de CLIP y VAE. La seed se fija
+    en todo nodo con widget ``seed``. EngineError si falta alguno de los tres
+    loaders, si el perfil es invalido o si ``seed`` viene y no hay ningun nodo
+    con widget ``seed``.
     """
     profile = getattr(entry, "profile", None)
     if profile is None:
         raise EngineError("entrada sin profile: no se puede parchear el modelo")
     patched = copy.deepcopy(graph)
-    _patch_loader(
-        patched, "UNETLoader", {"unet_name": _profile_field(profile, "unet_name")}
-    )
-    _patch_clip_loader(
-        patched,
-        _profile_field(profile, "clip_name"),
-        _profile_field(profile, "clip_type"),
-    )
-    _patch_loader(patched, "VAELoader", {"vae_name": _profile_field(profile, "vae_name")})
+    unet_name = _profile_field(profile, "unet_name")
+    clip_name = _profile_field(profile, "clip_name")
+    clip_type = _profile_field(profile, "clip_type")
+    vae_name = _profile_field(profile, "vae_name")
+    if clip_type == "checkpoint" or clip_name == "__checkpoint__":
+        unets = _nodes_of(patched, "UNETLoader")
+        clips = _nodes_of(patched, "CLIPLoader")
+        vaes = _nodes_of(patched, "VAELoader")
+        if not unets:
+            raise EngineError(
+                "grafo sin nodo UNETLoader: no se puede aplicar el perfil del modelo"
+            )
+        if not clips:
+            raise EngineError(
+                "grafo sin nodo CLIPLoader: no se puede aplicar el perfil del modelo"
+            )
+        if not vaes:
+            raise EngineError(
+                "grafo sin nodo VAELoader: no se puede aplicar el perfil del modelo"
+            )
+        ckpt_id = unets[0][0]
+        patched[ckpt_id] = {
+            "class_type": "CheckpointLoaderSimple",
+            "inputs": {"ckpt_name": unet_name},
+        }
+        clip_ids = {cid for cid, _ in clips}
+        vae_ids = {vid for vid, _ in vaes}
+        for cid in clip_ids:
+            del patched[cid]
+        for vid in vae_ids:
+            del patched[vid]
+        for node in patched.values():
+            if not isinstance(node, dict):
+                continue
+            inputs = node.get("inputs")
+            if not isinstance(inputs, dict):
+                continue
+            for key, val in list(inputs.items()):
+                if isinstance(val, (list, tuple)) and len(val) >= 2:
+                    ref_id = str(val[0])
+                    if ref_id in clip_ids and val[1] == 0:
+                        inputs[key] = [ckpt_id, 1]
+                    elif ref_id in vae_ids and val[1] == 0:
+                        inputs[key] = [ckpt_id, 2]
+    else:
+        _patch_loader(patched, "UNETLoader", {"unet_name": unet_name})
+        _patch_clip_loader(patched, clip_name, clip_type)
+        _patch_loader(patched, "VAELoader", {"vae_name": vae_name})
     if seed is not None:
         _apply_seed(patched, seed)
     return patched
@@ -206,7 +247,7 @@ def to_img2img(graph: dict, image_name: str, strength: float = DEFAULT_STRENGTH)
 
     Elimina los EmptyLatentImage, anade los nodos fijos ``img_ref`` (LoadImage con
     ``image=image_name``) e ``img_enc`` (VAEEncode con pixels de ``img_ref`` y el
-    vae del primer VAELoader) y rewirea cada KSampler a
+    vae del primer VAELoader o CheckpointLoaderSimple) y rewirea cada KSampler a
     ``latent_image=['img_enc', 0]`` con ``denoise=strength``. EngineError si
     ``strength`` no cae en (0, 1], si ``img_ref``/``img_enc`` ya existen o si falta
     KSampler, VAELoader o EmptyLatentImage.
@@ -223,8 +264,10 @@ def to_img2img(graph: dict, image_name: str, strength: float = DEFAULT_STRENGTH)
     if not ksamplers:
         raise EngineError("grafo sin KSampler: no se puede convertir a img2img")
     vaes = _nodes_of(graph, "VAELoader")
-    if not vaes:
+    ckpts = _nodes_of(graph, "CheckpointLoaderSimple") if not vaes else []
+    if not vaes and not ckpts:
         raise EngineError("grafo sin VAELoader: no se puede convertir a img2img")
+    vae_link = [vaes[0][0], 0] if vaes else [ckpts[0][0], 2]
     latents = _nodes_of(graph, LATENT_CLASS)
     if not latents:
         raise EngineError("grafo sin EmptyLatentImage: no se puede convertir a img2img")
@@ -234,7 +277,7 @@ def to_img2img(graph: dict, image_name: str, strength: float = DEFAULT_STRENGTH)
     patched[IMG_REF_ID] = {"class_type": "LoadImage", "inputs": {"image": image_name}}
     patched[IMG_ENC_ID] = {
         "class_type": "VAEEncode",
-        "inputs": {"pixels": [IMG_REF_ID, 0], "vae": [vaes[0][0], 0]},
+        "inputs": {"pixels": [IMG_REF_ID, 0], "vae": vae_link},
     }
     for node_id, _node in ksamplers:
         inputs = _inputs_of(patched[node_id], KSAMPLER_CLASS, node_id)

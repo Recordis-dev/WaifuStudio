@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 from pathlib import Path
 import re
+import shutil
+import struct
 import sys
 from typing import Any
 
@@ -28,6 +31,7 @@ from app.loras import (
     safetensors_header,
     update_entry as update_lora,
 )
+from app.registry import ModelEntry, ModelProfile, ModelRegistry
 
 
 from app import loras as _loras_module
@@ -49,6 +53,346 @@ def _call_add_lora(entry: dict) -> dict:
 LORA_UPLOAD_MAX_BYTES = int(2.5 * 1024 * 1024 * 1024)
 _LORA_FAMILY_RE = re.compile(r"[a-z0-9._-]+")
 _LORA_SLUG_RE = re.compile(r"[^a-z0-9._-]+")
+_MAX_HEADER_READ_BYTES = 32 * 1024 * 1024
+_GENERIC_BOORU_TAGS = frozenset({
+    "1girl", "1boy", "solo", "anime screencap", "anime coloring", "portrait",
+    "long hair", "short hair", "blonde hair", "brown hair", "black hair",
+    "pink hair", "blue hair", "blue eyes", "red eyes", "brown eyes",
+    "looking at viewer", "smile", "blush", "blushing", "open mouth",
+    "simple background", "white background", "upper body", "cowboy shot",
+    "full body", "breasts", "large breasts", "medium breasts", "small breasts",
+    "shirt", "white shirt", "skirt", "dress", "black dress", "school uniform",
+    "cosplay", "frills", "indoor", "outdoor", "day", "night", "highres",
+    "absurdres", "long eyelashes", "messy hair", "bangs", "closed eyes",
+})
+
+
+def classify_safetensors_file(path: Path) -> tuple[str, bytes]:
+    """Clasifica un .safetensors leyendo solo su cabecera JSON (<1ms, sin RAM/GPU).
+
+    Devuelve ``(kind, raw_header)`` donde ``kind`` es uno de:
+    ``"lora"``, ``"checkpoint"``, ``"anima_unet"``, ``"video_model"``,
+    ``"unknown"`` o ``"invalid"``.
+    """
+    try:
+        with path.open("rb") as handle:
+            raw8 = handle.read(8)
+            if len(raw8) < 8:
+                return "invalid", b""
+            (hlen,) = struct.unpack("<Q", raw8)
+            if hlen == 0 or hlen > _MAX_HEADER_READ_BYTES:
+                return "invalid", b""
+            body = handle.read(hlen)
+            if len(body) < hlen:
+                return "invalid", b""
+            raw_header = raw8 + body
+    except OSError:
+        return "invalid", b""
+
+    header = safetensors_header(raw_header)
+    if header is None:
+        return "invalid", b""
+    keys = [k for k in header.keys() if k != "__metadata__"]
+    if not keys:
+        return "unknown", raw_header
+
+    sample = keys[:128]
+    lora_markers = (
+        ".lora_down", ".lora_up", ".lora_A", ".lora_B",
+        "lora_unet", "lora_te", "hada_w", "lokr_w",
+    )
+    if any(
+        any(m in k for m in lora_markers) or k.endswith(".alpha")
+        for k in sample
+    ):
+        return "lora", raw_header
+
+    if any(
+        k.startswith(("audio_patch_proj.", "adaln_t_table", "patch_embedding.", "time_projection."))
+        for k in keys
+    ):
+        return "video_model", raw_header
+
+    has_diff = any(k.startswith("model.diffusion_model.") for k in keys)
+    has_ckpt_aux = any(
+        k.startswith(("first_stage_model.", "conditioner.", "cond_stage_model."))
+        for k in keys
+    )
+    if has_diff and has_ckpt_aux:
+        return "checkpoint", raw_header
+
+    if any(
+        k.startswith(("net.blocks.", "model.diffusion_model.blocks.", "diffusion_model.blocks."))
+        for k in keys
+    ):
+        return "anima_unet", raw_header
+
+    return "unknown", raw_header
+
+
+def _smart_infer_trigger(raw_header: bytes, fallback_trigger: str, stem: str = "") -> str:
+    """Extrae el trigger de personaje/estilo ignorando tags genericos de booru."""
+    header = safetensors_header(raw_header)
+    if not isinstance(header, dict):
+        return fallback_trigger
+    meta = header.get("__metadata__")
+    if not isinstance(meta, dict):
+        return fallback_trigger
+    raw_freq = meta.get("ss_tag_frequency")
+    if not isinstance(raw_freq, str) or not raw_freq.strip():
+        return fallback_trigger
+    try:
+        data = json.loads(raw_freq)
+    except ValueError:
+        return fallback_trigger
+    if not isinstance(data, dict):
+        return fallback_trigger
+    counts: dict[str, int] = {}
+    for ds in data.values():
+        if not isinstance(ds, dict):
+            continue
+        for tag, cnt in ds.items():
+            if not isinstance(tag, str):
+                continue
+            try:
+                val = int(str(cnt).strip())
+            except ValueError:
+                continue
+            norm = " ".join(tag.split())
+            if not norm:
+                continue
+            if norm.lower().replace("_", " ") in _GENERIC_BOORU_TAGS:
+                continue
+            counts[norm] = counts.get(norm, 0) + val
+    if counts:
+        stem_tokens = [
+            tok for tok in re.split(r"[^a-z0-9]+", stem.lower()) if len(tok) >= 4
+        ]
+        if stem_tokens:
+            stem_matches = {
+                tag: cnt
+                for tag, cnt in counts.items()
+                if cnt >= 10 and any(tok in tag.lower() for tok in stem_tokens)
+            }
+            if stem_matches:
+                return max(stem_matches.items(), key=lambda kv: kv[1])[0]
+        best_tag, best_cnt = max(counts.items(), key=lambda kv: kv[1])
+        if best_cnt >= 10:
+            return best_tag
+    return fallback_trigger
+
+
+def scan_disk_models(cfg: Any, registry: ModelRegistry | None = None) -> list[dict]:
+    """Escanea modelos en ComfyUI/models (reubicando si estan en loras) y los registra."""
+    if cfg is None or not getattr(cfg, "comfy_root", None):
+        return []
+    models_root = Path(cfg.comfy_root) / "models"
+    if not models_root.is_dir():
+        return []
+
+    loras_dir = models_root / "loras"
+    diff_dir = models_root / "diffusion_models"
+    ckpt_dir = models_root / "checkpoints"
+
+    # Paso 1: Reubicar modelos completos puestos por error en loras/ o carpetas cruzadas
+    for scan_dir in (loras_dir, diff_dir, ckpt_dir):
+        if not scan_dir.is_dir():
+            continue
+        for path in sorted(scan_dir.rglob("*.safetensors")):
+            kind, _ = classify_safetensors_file(path)
+            if kind == "checkpoint" and scan_dir != ckpt_dir:
+                ckpt_dir.mkdir(parents=True, exist_ok=True)
+                dest = ckpt_dir / path.name
+                if not dest.exists():
+                    try:
+                        shutil.move(str(path), str(dest))
+                    except OSError:
+                        pass
+            elif kind == "anima_unet" and scan_dir != diff_dir:
+                diff_dir.mkdir(parents=True, exist_ok=True)
+                dest = diff_dir / path.name
+                if not dest.exists():
+                    try:
+                        shutil.move(str(path), str(dest))
+                    except OSError:
+                        pass
+
+    if registry is None:
+        return []
+
+    known_unets = {
+        entry.profile.unet_name.replace("/", "\\").lower()
+        for entry in registry.models
+    }
+    known_ids = {entry.id for entry in registry.models}
+    added: list[ModelEntry] = []
+
+    candidates: list[tuple[Path, Path, str]] = []
+    if diff_dir.is_dir():
+        for p in sorted(diff_dir.rglob("*.safetensors")):
+            kind, _ = classify_safetensors_file(p)
+            if kind == "anima_unet":
+                candidates.append((p, diff_dir, "anima_unet"))
+    if ckpt_dir.is_dir():
+        for p in sorted(ckpt_dir.rglob("*.safetensors")):
+            kind, _ = classify_safetensors_file(p)
+            if kind in ("checkpoint", "anima_unet"):
+                candidates.append((p, ckpt_dir, "checkpoint"))
+
+    for path, base_dir, kind in candidates:
+        rel_name = str(path.relative_to(base_dir)).replace("\\", "/")
+        if rel_name.replace("/", "\\").lower() in known_unets:
+            continue
+        base_id = _lora_slug(path.stem)
+        model_id = base_id
+        suffix = 2
+        while model_id in known_ids:
+            model_id = f"{base_id}-{suffix}"
+            suffix += 1
+        if kind == "checkpoint":
+            profile = ModelProfile(
+                unet_name=rel_name,
+                clip_name="__checkpoint__",
+                clip_type="checkpoint",
+                vae_name="__checkpoint__",
+            )
+            defaults = {
+                "steps": 28,
+                "cfg": 5.5,
+                "sampler_name": "euler_ancestral",
+                "scheduler": "normal",
+                "width": 1024,
+                "height": 1024,
+            }
+            source = "auto-detectado (ComfyUI/models/checkpoints)"
+            notes = "Checkpoint completo (UNet + CLIP + VAE) auto-detectado en disco"
+        else:
+            profile = ModelProfile(
+                unet_name=rel_name,
+                clip_name="qwen_3_06b_base.safetensors",
+                clip_type="stable_diffusion",
+                vae_name="qwen_image_vae.safetensors",
+            )
+            defaults = {
+                "steps": 30,
+                "cfg": 6.0,
+                "sampler_name": "euler",
+                "scheduler": "normal",
+                "width": 1024,
+                "height": 1024,
+            }
+            source = "auto-detectado (ComfyUI/models/diffusion_models)"
+            notes = "Modelo Anima auto-detectado en disco"
+
+        entry = ModelEntry(
+            id=model_id,
+            family="anima",
+            display_name=path.stem,
+            profile=profile,
+            source=source,
+            license="no verificada (archivo local del usuario)",
+            preprompt="glossy",
+            defaults=defaults,
+            notes=notes,
+        )
+        registry.add(entry)
+        known_ids.add(model_id)
+        known_unets.add(rel_name.replace("/", "\\").lower())
+        added.append(entry)
+
+    if added and getattr(cfg, "data_dir", None):
+        user_models_path = Path(cfg.data_dir) / "registry" / "models.json"
+        try:
+            user_reg = ModelRegistry.load_or_empty(user_models_path)
+            for item in registry.models:
+                user_reg._replace(item)
+            user_reg.save(user_models_path)
+        except Exception:
+            pass
+
+    return [
+        {
+            "id": e.id,
+            "display_name": e.display_name,
+            "family": e.family,
+            "unet_name": e.profile.unet_name,
+        }
+        for e in added
+    ]
+
+
+def scan_disk_loras(comfy_root: Any) -> list[dict]:
+    """Escanea ComfyUI/models/loras y registra automaticamente los .safetensors nuevos."""
+    if not comfy_root:
+        return []
+    loras_dir = Path(comfy_root) / "models" / "loras"
+    if not loras_dir.is_dir():
+        return []
+
+    existing = list_loras()
+    known_files = {
+        item["file"].replace("/", "\\").lower() for item in existing
+    }
+    known_ids = {item["id"] for item in existing}
+    added: list[dict] = []
+
+    for path in sorted(loras_dir.rglob("*.safetensors")):
+        rel_path = path.relative_to(loras_dir)
+        rel_str = str(rel_path).replace("/", "\\")
+        if rel_str.lower() in known_files:
+            continue
+        kind, raw_header = classify_safetensors_file(path)
+        if kind != "lora":
+            continue
+        inferred = inspect_safetensors(raw_header)
+        parts = rel_path.parts
+        if len(parts) > 1:
+            sub = _lora_slug(parts[0])
+            family = "wan" if sub == "lightx2v" else (sub or "anima")
+        else:
+            lower_name = path.name.lower()
+            if lower_name.startswith("minimax_h3"):
+                family = "h3"
+            elif lower_name.startswith(("wan", "lightx2v")):
+                family = "wan"
+            else:
+                family = "anima"
+
+        stem = path.stem
+        title = inferred["title"].strip()
+        if title and title.lower() != stem.lower() and len(title) <= 40:
+            display_name = f"{stem} ({title})"
+        else:
+            display_name = stem
+
+        trigger = _smart_infer_trigger(raw_header, inferred["trigger"], stem=stem)
+        base_id = _lora_slug(stem)
+        lora_id = base_id
+        suffix = 2
+        while lora_id in known_ids:
+            lora_id = f"{base_id}-{suffix}"
+            suffix += 1
+
+        entry = {
+            "id": lora_id,
+            "family": family,
+            "file": rel_str,
+            "display_name": display_name,
+            "trigger": trigger,
+            "default_weight": 1.0,
+            "source": "auto-detectado (ComfyUI\\models\\loras)",
+            "license": "no verificada (archivo del usuario)",
+            "notes": _lora_upload_notes(inferred),
+        }
+        try:
+            saved = _call_add_lora(entry)
+            known_files.add(rel_str.lower())
+            known_ids.add(lora_id)
+            added.append(saved)
+        except Exception:
+            continue
+
+    return added
 
 
 def lora_file_path(comfy_root: Any, relative: object) -> Path:
@@ -157,8 +501,11 @@ router = APIRouter()
 
 
 @router.get("/api/models")
-async def api_models(request: Request) -> list[dict]:
+async def api_models(request: Request, scan: bool = False) -> list[dict]:
     reg = request.app.state.registry
+    if scan:
+        cfg = getattr(request.app.state, "config", None)
+        scan_disk_models(cfg, reg)
     return [
         {
             "id": entry.id,
@@ -173,8 +520,30 @@ async def api_models(request: Request) -> list[dict]:
 
 
 @router.get("/api/loras")
-async def api_loras(family: str | None = None) -> dict:
+async def api_loras(
+    request: Request, family: str | None = None, scan: bool = False
+) -> dict:
+    if scan:
+        cfg = getattr(request.app.state, "config", None)
+        reg = getattr(request.app.state, "registry", None)
+        scan_disk_models(cfg, reg)
+        if cfg is not None:
+            scan_disk_loras(cfg.comfy_root)
     return {"items": list_loras(family), "families": lora_families()}
+
+
+@router.post("/api/loras/scan")
+async def api_loras_scan(request: Request) -> dict:
+    """Escanea las carpetas de modelos y LoRAs en disco y registra novedades."""
+    cfg = getattr(request.app.state, "config", None)
+    reg = getattr(request.app.state, "registry", None)
+    added_models = scan_disk_models(cfg, reg)
+    added_loras = scan_disk_loras(cfg.comfy_root) if cfg is not None else []
+    return {
+        "added_loras": added_loras,
+        "added_models": added_models,
+        **_lora_catalog(),
+    }
 
 
 @router.post("/api/loras")

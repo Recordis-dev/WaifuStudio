@@ -7,11 +7,28 @@ import { state } from "../state.js";
 import { $, on, setStatus, readFileBase64 } from "../dom.js";
 import { api, postJson, putJson } from "../api.js";
 
-async function loadLoras() {
+async function loadLoras(options = {}) {
   const family = state.family || "anima";
-  const data = await api(`/api/loras?family=${encodeURIComponent(family)}`);
+  const previousSelection =
+    options && options.preserveSelection && state.loraSelection instanceof Map
+      ? new Map(state.loraSelection)
+      : null;
+  const data = await api(
+    `/api/loras?family=${encodeURIComponent(family)}&scan=1`
+  );
   state.loras = data.items || [];
-  state.loraSelection = new Map();
+  if (previousSelection) {
+    const validIds = new Set(state.loras.map((l) => l.id));
+    const nextSelection = new Map();
+    for (const [id, weight] of previousSelection.entries()) {
+      if (validIds.has(id)) {
+        nextSelection.set(id, weight);
+      }
+    }
+    state.loraSelection = nextSelection;
+  } else {
+    state.loraSelection = new Map();
+  }
   renderLoras();
 }
 
@@ -228,6 +245,13 @@ function openLoraModal() {
   renderLoraModalList();
   updateLoraCounters();
   modal.classList.remove("hidden");
+  loadLoras({ preserveSelection: true })
+    .then(() => {
+      window.dispatchEvent(new CustomEvent("waifu:models-refresh"));
+    })
+    .catch((error) => {
+      console.warn("lora scan:", error);
+    });
 }
 
 function closeLoraModal() {
@@ -364,7 +388,7 @@ function renderLoraLibrary() {
 }
 
 async function loadLoraLibrary() {
-  const data = await api("/api/loras");
+  const data = await api("/api/loras?scan=1");
   state.loraLibrary = data.items || [];
   renderLoraLibrary();
   return data;
@@ -534,8 +558,14 @@ function openLoraLibrary() {
   closeLoraModal();
   resetLoraForm();
   $("lora-library-modal").classList.remove("hidden");
-  setLoraLibraryStatus("Listo");
-  loadLoraLibrary().catch((error) => setLoraLibraryStatus(error.message, true));
+  setLoraLibraryStatus("Escaneando carpeta…");
+  loadLoraLibrary()
+    .then(async () => {
+      await loadLoras({ preserveSelection: true });
+      window.dispatchEvent(new CustomEvent("waifu:models-refresh"));
+      setLoraLibraryStatus("Listo (sincronizado)");
+    })
+    .catch((error) => setLoraLibraryStatus(error.message, true));
 }
 
 function closeLoraLibrary() {

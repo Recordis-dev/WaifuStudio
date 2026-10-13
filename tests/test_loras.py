@@ -771,5 +771,90 @@ class InspectSafetensorsTests(unittest.TestCase):
         self.assertEqual(safetensors_header(b"corto"), None)
 
 
+class DiskAutoScanTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.comfy = self.root / "ComfyUI"
+        self.data_dir = self.root / "data"
+        self.loras_json = self.data_dir / "registry" / "loras.json"
+        self.loras_json.parent.mkdir(parents=True, exist_ok=True)
+        self.loras_json.write_text(
+            json.dumps({"version": 1, "loras": []}), encoding="utf-8"
+        )
+        p1 = mock.patch.object(loras_module, "DEFAULT_PATH", self.loras_json)
+        p1.start()
+        self.addCleanup(p1.stop)
+        p2 = mock.patch.object(
+            loras_module, "user_registry_path", lambda: self.loras_json
+        )
+        p2.start()
+        self.addCleanup(p2.stop)
+
+    def test_scan_auto_detecta_loras_y_reubica_checkpoint_a_models(self):
+        from app.config import EngineConfig
+        from app.registry import ModelRegistry
+        from app.routes.models import scan_disk_loras, scan_disk_models
+
+        loras_dir = self.comfy / "models" / "loras"
+        anima_dir = loras_dir / "anima"
+        anima_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1. LoRA en raiz de loras
+        (loras_dir / "Stuffyai Style.safetensors").write_bytes(
+            safetensors_blob(
+                {"ss_base_model_version": "sdxl"},
+                {"lora_unet_down.lora_down.weight": {"dtype": "F16"}},
+            )
+        )
+        # 2. LoRA en subcarpeta anima
+        (anima_dir / "Marin Kitagawa 1.safetensors").write_bytes(
+            safetensors_blob(
+                {
+                    "modelspec.title": "My_Dress_Up_Darling",
+                    "ss_tag_frequency": json.dumps(
+                        {"ds": {"solo": 100, "1girl": 90, "marinkitagawa": 50}}
+                    ),
+                },
+                {"lora_unet_blocks_0.lora_down.weight": {"dtype": "F16"}},
+            )
+        )
+        # 3. Modelo Checkpoint puesto en loras/
+        (loras_dir / "Vidrohah-v1.2.safetensors").write_bytes(
+            safetensors_blob(
+                {},
+                {
+                    "model.diffusion_model.input_blocks.0.weight": {"dtype": "F16"},
+                    "conditioner.embedders.0.weight": {"dtype": "F16"},
+                    "first_stage_model.decoder.weight": {"dtype": "F16"},
+                },
+            )
+        )
+
+        cfg = EngineConfig(
+            comfy_root=self.comfy,
+            comfy_url="http://127.0.0.1:8288",
+            data_dir=self.data_dir,
+        )
+        reg = ModelRegistry()
+        added_models = scan_disk_models(cfg, reg)
+        added_loras = scan_disk_loras(self.comfy)
+
+        self.assertEqual(len(added_models), 1)
+        self.assertEqual(added_models[0]["id"], "vidrohah-v1.2")
+        self.assertTrue(
+            (self.comfy / "models" / "checkpoints" / "Vidrohah-v1.2.safetensors").is_file()
+        )
+        self.assertFalse((loras_dir / "Vidrohah-v1.2.safetensors").exists())
+
+        lora_ids = [item["id"] for item in added_loras]
+        self.assertEqual(lora_ids, ["marin-kitagawa-1", "stuffyai-style"])
+        marin = get("marin-kitagawa-1")
+        self.assertEqual(marin["display_name"], "Marin Kitagawa 1 (My_Dress_Up_Darling)")
+        self.assertEqual(marin["trigger"], "marinkitagawa")
+
+
 if __name__ == "__main__":
     unittest.main()
+
