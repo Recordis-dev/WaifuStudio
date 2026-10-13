@@ -282,12 +282,54 @@ function countZoneTags(zone) {
   return (state.promptZones[zone] || []).length;
 }
 
+function hasPendingZoneInput() {
+  const container = $("zone-editor");
+  if (!container) {
+    return false;
+  }
+  for (const input of container.querySelectorAll(".zone-quick-input")) {
+    if (String(input.value || "").trim()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function flushPendingZoneInputs() {
+  const container = $("zone-editor");
+  if (!container) {
+    return false;
+  }
+  const inputs = container.querySelectorAll(".zone-quick-input");
+  let dirty = false;
+  const seen = allPromptTagKeys();
+  for (const input of inputs) {
+    const raw = String(input.value || "").trim();
+    if (!raw) {
+      continue;
+    }
+    const tags = promptTagsFromText(raw);
+    input.value = "";
+    if (!tags.length) {
+      continue;
+    }
+    const zone = input.dataset.zone;
+    const subcat = input.dataset.subcat || null;
+    pushTagsToZone(zone, tags, subcat, seen);
+    dirty = true;
+  }
+  if (dirty) {
+    renderZoneEditor();
+  }
+  return dirty;
+}
+
 function updateGenerateState() {
   const button = $("btn-generate");
   if (!button) {
     return;
   }
-  button.disabled = state.busy || !composePrompt();
+  button.disabled = state.busy || (!composePrompt() && !hasPendingZoneInput());
 }
 
 function removeTagFromZone(zone, tag, subcat) {
@@ -346,8 +388,13 @@ function zoneQuickRow(zone, subcat, label) {
   const input = document.createElement("input");
   input.type = "text";
   input.className = "zone-quick-input";
+  input.dataset.zone = zone;
+  if (subcat) {
+    input.dataset.subcat = subcat;
+  }
   input.placeholder = "Tag(s) separados por comas…";
   input.setAttribute("aria-label", `Añadir tag a ${label}`);
+  input.addEventListener("input", updateGenerateState);
   const insert = document.createElement("button");
   insert.type = "submit";
   insert.className = "zone-quick-add";
@@ -422,6 +469,7 @@ function renderZoneEditor() {
 }
 
 async function copyFinalPrompt() {
+  flushPendingZoneInputs();
   const text = composePrompt();
   try {
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -461,6 +509,8 @@ export {
   applyZonesPayload,
   mergeZonesText,
   countZoneTags,
+  hasPendingZoneInput,
+  flushPendingZoneInputs,
   updateGenerateState,
   removeTagFromZone,
   zoneTagsRow,

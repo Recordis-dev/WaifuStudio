@@ -26,6 +26,7 @@ import {
   applyZonesPayload,
   renderZoneEditor,
   resetPromptZones,
+  flushPendingZoneInputs,
   updateGenerateState,
   composePrompt,
 } from "../components/prompt_zones.js";
@@ -413,6 +414,7 @@ async function generate() {
   if (state.busy) {
     return;
   }
+  flushPendingZoneInputs();
   const prompt = composePrompt();
   if (!prompt) {
     updateGenerateState();

@@ -484,6 +484,16 @@ async function insertZoneSelection() {
   if (!zone) {
     return;
   }
+  const manualInput = $("zone-insert-input");
+  if (manualInput && manualInput.value.trim()) {
+    for (const part of manualInput.value.trim().split(",")) {
+      const tag = part.trim();
+      if (tag) {
+        zonePopoverSelected.set(tag.toLowerCase(), tag);
+      }
+    }
+    manualInput.value = "";
+  }
   const selected = Array.from(zonePopoverSelected.values());
   if (zone === "general" && !zonePopoverOriginSubcat) {
     if (!selected.length) {
