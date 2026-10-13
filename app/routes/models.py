@@ -264,6 +264,7 @@ def scan_disk_models(cfg: Any, registry: ModelRegistry | None = None) -> list[di
             model_id = f"{base_id}-{suffix}"
             suffix += 1
         if kind == "checkpoint":
+            model_family = "sdxl"
             profile = ModelProfile(
                 unet_name=rel_name,
                 clip_name="__checkpoint__",
@@ -281,6 +282,7 @@ def scan_disk_models(cfg: Any, registry: ModelRegistry | None = None) -> list[di
             source = "auto-detectado (ComfyUI/models/checkpoints)"
             notes = "Checkpoint completo (UNet + CLIP + VAE) auto-detectado en disco"
         else:
+            model_family = "anima"
             profile = ModelProfile(
                 unet_name=rel_name,
                 clip_name="qwen_3_06b_base.safetensors",
@@ -300,7 +302,7 @@ def scan_disk_models(cfg: Any, registry: ModelRegistry | None = None) -> list[di
 
         entry = ModelEntry(
             id=model_id,
-            family="anima",
+            family=model_family,
             display_name=path.stem,
             profile=profile,
             source=source,
@@ -313,6 +315,25 @@ def scan_disk_models(cfg: Any, registry: ModelRegistry | None = None) -> list[di
         known_ids.add(model_id)
         known_unets.add(rel_name.replace("/", "\\").lower())
         added.append(entry)
+
+    # Auto-corregir familia de modelos checkpoint existentes si estaban marcados como anima
+    for existing_model in list(registry.models):
+        if existing_model.profile.clip_type == "checkpoint" and existing_model.family != "sdxl":
+            try:
+                fixed_model = ModelEntry(
+                    id=existing_model.id,
+                    family="sdxl",
+                    display_name=existing_model.display_name,
+                    profile=existing_model.profile,
+                    source=existing_model.source,
+                    license=existing_model.license,
+                    preprompt=existing_model.preprompt,
+                    defaults=dict(existing_model.defaults),
+                    notes=existing_model.notes,
+                )
+                registry._replace(fixed_model)
+            except Exception:
+                pass
 
     if added and getattr(cfg, "data_dir", None):
         user_models_path = Path(cfg.data_dir) / "registry" / "models.json"
@@ -335,8 +356,46 @@ def scan_disk_models(cfg: Any, registry: ModelRegistry | None = None) -> list[di
     ]
 
 
+def infer_lora_family(raw_header: bytes, rel_path: Path) -> str:
+    """Detecta la arquitectura base compatible de un LoRA (anima, sdxl, wan, h3)."""
+    header = safetensors_header(raw_header)
+    keys = [k for k in header.keys() if k != "__metadata__"] if header else []
+    meta = header.get("__metadata__", {}) if isinstance(header, dict) else {}
+    arch = str(meta.get("modelspec.architecture") or "").lower()
+    base = str(meta.get("ss_base_model_version") or "").lower()
+    sd_name = str(meta.get("ss_sd_model_name") or "").lower()
+    combined_meta = f"{arch} {base} {sd_name}".lower()
+
+    if any(m in combined_meta for m in ("wan", "lightx2v")) or any("wan" in k.lower() for k in keys[:32]):
+        return "wan"
+    if any(m in combined_meta for m in ("h3", "minimax")) or rel_path.name.lower().startswith("minimax_h3"):
+        return "h3"
+    if "anima" in combined_meta:
+        return "anima"
+    if any(k.startswith(("diffusion_model.blocks.", "lora_te_layers_", "net.blocks.")) for k in keys[:64]):
+        return "anima"
+    if any(m in combined_meta for m in ("sdxl", "illustrious", "pony")):
+        return "sdxl"
+    if any(k.startswith(("lora_te1_", "lora_te2_")) for k in keys[:64]):
+        return "sdxl"
+    if any("input_blocks" in k or "output_blocks" in k for k in keys[:64]):
+        return "sdxl"
+    parts = rel_path.parts
+    if len(parts) > 1:
+        sub = _lora_slug(parts[0])
+        if sub in ("wan", "lightx2v"):
+            return "wan"
+        if sub in ("h3", "minimax_h3"):
+            return "h3"
+        if sub in ("sdxl", "illustrious", "pony"):
+            return "sdxl"
+        if sub == "anima":
+            return "anima"
+    return "anima"
+
+
 def scan_disk_loras(comfy_root: Any) -> list[dict]:
-    """Escanea ComfyUI/models/loras y registra automaticamente los .safetensors nuevos."""
+    """Escanea ComfyUI/models/loras, infiere arquitectura y registra novedades o auto-corrige familias."""
     if not comfy_root:
         return []
     loras_dir = Path(comfy_root) / "models" / "loras"
@@ -344,34 +403,32 @@ def scan_disk_loras(comfy_root: Any) -> list[dict]:
         return []
 
     existing = list_loras()
-    known_files = {
-        item["file"].replace("/", "\\").lower() for item in existing
+    file_to_entry = {
+        item["file"].replace("/", "\\").lower(): item for item in existing
     }
+    known_files = set(file_to_entry.keys())
     known_ids = {item["id"] for item in existing}
     added: list[dict] = []
 
     for path in sorted(loras_dir.rglob("*.safetensors")):
         rel_path = path.relative_to(loras_dir)
         rel_str = str(rel_path).replace("/", "\\")
-        if rel_str.lower() in known_files:
-            continue
         kind, raw_header = classify_safetensors_file(path)
         if kind != "lora":
             continue
-        inferred = inspect_safetensors(raw_header)
-        parts = rel_path.parts
-        if len(parts) > 1:
-            sub = _lora_slug(parts[0])
-            family = "wan" if sub == "lightx2v" else (sub or "anima")
-        else:
-            lower_name = path.name.lower()
-            if lower_name.startswith("minimax_h3"):
-                family = "h3"
-            elif lower_name.startswith(("wan", "lightx2v")):
-                family = "wan"
-            else:
-                family = "anima"
+        family = infer_lora_family(raw_header, rel_path)
+        key = rel_str.lower()
+        if key in known_files:
+            existing_item = file_to_entry[key]
+            if existing_item.get("family") != family:
+                try:
+                    update_lora(existing_item["id"], {"family": family})
+                    existing_item["family"] = family
+                except Exception:
+                    pass
+            continue
 
+        inferred = inspect_safetensors(raw_header)
         stem = path.stem
         title = inferred["title"].strip()
         if title and title.lower() != stem.lower() and len(title) <= 40:

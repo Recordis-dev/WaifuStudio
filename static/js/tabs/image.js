@@ -165,7 +165,7 @@ async function loadModels() {
 }
 
 async function loadPrepromptOptions() {
-  const family = state.family || "anima";
+  const family = state.family === "sdxl" ? "anima" : (state.family || "anima");
   const data = await api(`/api/preprompts?family=${encodeURIComponent(family)}`);
   state.customPreprompts = data.custom || [];
   const custom = new Set(state.customPreprompts);
@@ -298,7 +298,7 @@ async function refreshNegative() {
     return;
   }
   const preprompt = $("preprompt").value || "glossy";
-  const family = state.family || "anima";
+  const family = state.family === "sdxl" ? "anima" : (state.family || "anima");
   const data = await api(
     `/api/negative?preprompt=${encodeURIComponent(preprompt)}&family=${encodeURIComponent(family)}`
   );

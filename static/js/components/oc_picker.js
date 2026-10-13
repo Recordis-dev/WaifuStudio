@@ -213,7 +213,7 @@ async function loadOcCatalog() {
 }
 
 async function loadOcPreprompts() {
-  const family = state.family || "anima";
+  const family = state.family === "sdxl" ? "anima" : (state.family || "anima");
   const data = await api(`/api/preprompts?family=${encodeURIComponent(family)}`);
   const custom = new Set(data.custom || []);
   const select = $("oc-form-preprompt");

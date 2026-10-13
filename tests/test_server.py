@@ -257,7 +257,8 @@ class LorasRouteTests(ServerTestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(set(data), {"items", "families"})
-        self.assertEqual(data["families"], ["wan", "h3", "anima"])
+        for fam in ("wan", "h3", "anima"):
+            self.assertIn(fam, data["families"])
         ids = [item["id"] for item in data["items"]]
         for seed_id in (
             "lightx2v-wan-high",

@@ -29,7 +29,7 @@ from app.graphs import (
 )
 from app.loras import get as get_lora, validate_selection
 from app.params import is_valid_sampler, is_valid_scheduler
-from app.preprompts import DEFAULT_PREPROMPT, get_preprompt
+from app.preprompts import DEFAULT_FAMILY, DEFAULT_PREPROMPT, get_preprompt
 from app.progress import ProgressTracker
 from app.registry import ModelRegistry
 from app.routes.jobs import _JOBS, _progress_ws_url
@@ -207,8 +207,9 @@ def run_generation(
         graph = patch_params(graph, **applied)
         preprompt = job.get("preprompt") or entry.preprompt or DEFAULT_PREPROMPT
         prompt_text = _inject_lora_triggers(job["prompt"], validated_loras)
+        preprompt_family = entry.family if entry.family in ("anima",) else DEFAULT_FAMILY
         positive, negative = apply_preprompt(
-            prompt_text, family=entry.family, name=preprompt
+            prompt_text, family=preprompt_family, name=preprompt
         )
         graph = _set_text_nodes(
             graph, positive, _merge_tags([job.get("negative") or "", negative])

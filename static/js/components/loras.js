@@ -58,10 +58,11 @@ function renderLoraChips() {
   }
   container.replaceChildren();
   if (!state.loras.length) {
+    const fam = state.family || "anima";
+    const famLabel = fam === "anima" ? "Anima" : fam.toUpperCase();
     container.appendChild(
       emptyLoraMessage(
-        "No hay LoRAs de imagen registradas. Añádelas con «Gestionar " +
-          "biblioteca» (o en registry/loras.json) con familia anima"
+        `No hay LoRAs de imagen registradas compatibles con ${famLabel}. Añádelas en models/loras o con «Gestionar biblioteca».`
       )
     );
     return;
@@ -159,10 +160,11 @@ function renderLoraModalList() {
   container.replaceChildren();
   state.loraControls = {};
   if (!state.loras.length) {
+    const fam = state.family || "anima";
+    const famLabel = fam === "anima" ? "Anima" : fam.toUpperCase();
     container.appendChild(
       emptyLoraMessage(
-        "No hay LoRAs de imagen registradas. Añádelas con «Gestionar " +
-          "biblioteca» (o en registry/loras.json) con familia anima"
+        `No hay LoRAs registradas compatibles con ${famLabel}. Añádelas en models/loras o desde «Gestionar biblioteca».`
       )
     );
     return;
@@ -227,6 +229,11 @@ function renderLoraModalList() {
 }
 
 function renderLoras() {
+  const badge = $("lora-modal-family-badge");
+  if (badge) {
+    const fam = state.family || "anima";
+    badge.textContent = fam === "anima" ? "Anima" : fam.toUpperCase();
+  }
   renderLoraChips();
   updateLoraCounters();
   renderLoraModalList();
@@ -241,6 +248,11 @@ function openLoraModal() {
   const search = $("lora-search");
   if (search) {
     search.value = "";
+  }
+  const badge = $("lora-modal-family-badge");
+  if (badge) {
+    const fam = state.family || "anima";
+    badge.textContent = fam === "anima" ? "Anima" : fam.toUpperCase();
   }
   renderLoraModalList();
   updateLoraCounters();
