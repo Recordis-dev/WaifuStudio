@@ -396,11 +396,11 @@ def _get_fts() -> sqlite3.Connection | None:
 
 
 def _fts_prefix_and(tokens: list[str]) -> str:
-    return " ".join(f'"{token}"*' for token in tokens)
+    return " ".join('"' + token.replace('"', '""') + '"*' for token in tokens)
 
 
 def _fts_prefix_or(tokens: list[str]) -> str:
-    return " OR ".join(f'"{token}"*' for token in tokens)
+    return " OR ".join('"' + token.replace('"', '""') + '"*' for token in tokens)
 
 
 def _rank_rows(
@@ -444,14 +444,18 @@ def _catalog_matches(needle: str):
     if not tokens:
         return
     conn = _get_fts()
+    rows = None
     if conn is not None:
-        with _FTS_LOCK:
-            rows = conn.execute(
-                "SELECT name, category, posts, bm25(tag_fts) FROM tag_fts"
-                " WHERE tag_fts MATCH ?",
-                (_fts_prefix_and(tokens),),
-            ).fetchall()
-    else:
+        try:
+            with _FTS_LOCK:
+                rows = conn.execute(
+                    "SELECT name, category, posts, bm25(tag_fts) FROM tag_fts"
+                    " WHERE tag_fts MATCH ?",
+                    (_fts_prefix_and(tokens),),
+                ).fetchall()
+        except sqlite3.OperationalError:
+            rows = None
+    if rows is None:
         rows = _fallback_rows(tokens, None, match_all=True)
     for _score, posts, name, _key, category in _rank_rows(rows):
         yield name, category, posts
@@ -588,6 +592,7 @@ def retrieve(query: str, zone: str | None = None, k: int = 60) -> list[str]:
         return []
     categories = _ZONE_CATEGORIES.get(zone) if isinstance(zone, str) else None
     conn = _get_fts()
+    rows = None
     if conn is not None:
         sql = (
             "SELECT name, category, posts, bm25(tag_fts) FROM tag_fts"
@@ -597,9 +602,12 @@ def retrieve(query: str, zone: str | None = None, k: int = 60) -> list[str]:
         if categories:
             sql += f" AND category IN ({', '.join('?' * len(categories))})"
             params.extend(categories)
-        with _FTS_LOCK:
-            rows = conn.execute(sql, params).fetchall()
-    else:
+        try:
+            with _FTS_LOCK:
+                rows = conn.execute(sql, params).fetchall()
+        except sqlite3.OperationalError:
+            rows = None
+    if rows is None:
         rows = _fallback_rows(tokens, categories, match_all=False)
     names: list[str] = []
     seen: set[str] = set()

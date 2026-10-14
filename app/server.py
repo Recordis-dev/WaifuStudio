@@ -130,7 +130,7 @@ def create_app(
                 inp_dir = cfg.comfy_input_dir
                 if inp_dir.exists():
                     for f in inp_dir.glob("*.png"):
-                        if len(f.stem) == 32 or f.name.startswith("ref_"):
+                        if len(f.stem) == 32 or f.name.startswith(("ref_", "chain_")):
                             f.unlink(missing_ok=True)
             except Exception:
                 pass
@@ -142,7 +142,12 @@ def create_app(
         finally:
             if start_worker:
                 queue.stop()
-                _get_manager().stop()
+                mgr = _get_manager()
+                mgr.stop()
+                from app.routes import prompt as _prompt_routes
+                p_mgr = getattr(_prompt_routes, "_manager_instance", None)
+                if p_mgr is not None and p_mgr is not mgr:
+                    p_mgr.stop()
 
     app = FastAPI(title="WAIFU", lifespan=lifespan)
     app.state.config = cfg

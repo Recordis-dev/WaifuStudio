@@ -53,6 +53,7 @@ export class ResolutionKit {
 
     this.orientationSelect = options.orientationSelect || null;
     this.qualitySelect = options.qualitySelect || null;
+    this.lastSelectedQuality = this.quality !== "original" ? this.quality : "fhd";
 
     if (this.orientationSelect && this.qualitySelect) {
       this.bindSelects();
@@ -76,6 +77,9 @@ export class ResolutionKit {
 
   setQuality(val) {
     this.quality = val;
+    if (val !== "original") {
+      this.lastSelectedQuality = val;
+    }
     if (this.qualitySelect) this.qualitySelect.value = val;
     this.update();
   }
@@ -97,6 +101,9 @@ export class ResolutionKit {
         if (dims.width === w && dims.height === h) {
           this.orientation = orientKey;
           this.quality = qualKey;
+          if (qualKey !== "original") {
+            this.lastSelectedQuality = qualKey;
+          }
           if (this.orientationSelect) this.orientationSelect.value = orientKey;
           if (this.qualitySelect) this.qualitySelect.value = qualKey;
           if (this.badgeEl) this.badgeEl.textContent = `${w} × ${h} (${dims.label})`;
@@ -119,6 +126,9 @@ export class ResolutionKit {
     });
     this.qualitySelect.addEventListener("change", (e) => {
       this.quality = e.target.value;
+      if (this.quality !== "original") {
+        this.lastSelectedQuality = this.quality;
+      }
       this.update();
     });
     this.update();
@@ -144,7 +154,12 @@ export class ResolutionKit {
       return;
     }
     if (this.qualitySelect) {
+      const wasDisabled = this.qualitySelect.disabled;
       this.qualitySelect.disabled = false;
+      if (wasDisabled && this.lastSelectedQuality) {
+        this.quality = this.lastSelectedQuality;
+        this.qualitySelect.value = this.lastSelectedQuality;
+      }
     }
     const dims = this.getDimensions(this.orientation, this.quality);
     if (this.widthInput) this.widthInput.value = dims.width;

@@ -1,14 +1,34 @@
-# WAIFU
+# WAIFU (v1.8.1)
 
 WAIFU es una webapp local de generación de imágenes y vídeo anime que usa ComfyUI como
-motor y está pensada para un solo PC con una sola GPU NVIDIA (probado en RTX 3060 12 GB).
+motor y está pensada para un solo PC con una sola GPU NVIDIA (RTX 3000 / 4000 / 5000, 8 GB+ VRAM,
+probado en RTX 3060 12 GB).
 Se abre en `http://127.0.0.1:8765` y el engine escucha en `http://127.0.0.1:8288`; todo se
 ejecuta en tu máquina, sin cuentas ni servicios en la nube. Es de uso personal y no lleva
 filtros NSFW/SFW.
 
+## Novedades en v1.8.0 / v1.8.1
+
+- **Instalador Hermético 100% Aislado (`INSTALAR.bat` / `install/install.ps1`)**:
+  - Aislamiento completo: ignora cualquier Python o Conda preexistente en el sistema desplegando CPython 3.12.12 portátil local (`python\`) y `uv` autónomo (`tools\uv\`).
+  - Limpieza activa de variables de entorno contaminantes globales (`PYTHONPATH`, `PYTHONHOME`, `CONDA_PREFIX`).
+  - Detección y recreación automática de `.venv` si fue creado con otro intérprete o ruta huérfana.
+  - Soporte para GPUs NVIDIA RTX 3000 / 4000 / 5000 con recomendación de Driver NVIDIA >= 570.xx para CUDA 13.0 (`cu130`).
+  - Fallback automático y tolerante a fallos para SageAttention.
+  - Preflight base reducido a 25 GB libres (usando `-SkipModels` o `-SkipLlm`) y descarga completa modular.
+  - Auto-registro de `Anima-2.9B-preview-v1` y soporte integrado para descarga de VDN-H3 (8 pasos).
+- **Auto-escaneo en caliente de Modelos y LoRAs en disco**:
+  - Detección y registro en caliente de modelos colocados en `ComfyUI/models/checkpoints` y `diffusion_models`.
+  - Soporte dual transparente para Anima UNET y Checkpoints SDXL/Illustrious (`LoraLoader` model + clip).
+  - Clasificación automática de LoRAs por inspección interna de tensores (`infer_lora_family`).
+  - Preservación robusta de archivos en galería mediante copias atómicas seguras (`copy2`).
+  - Mejoras de usabilidad y estabilidad en el comparador de Upscaler.
+- **Asistencia IA para Instalación y Desarrollo (`AGENTS.md`)**:
+  - Incluye `AGENTS.md` en la raíz optimizado para que cualquier agente IA (Claude Code, OpenCode, Cursor, Antigravity, Windsurf) asista al usuario paso a paso en la instalación, diagnóstico de dependencias o desarrollo de nuevas funciones con contexto completo y Zero-Blind-Read.
+
 ## Características
 
-### Arquitectura UI/UX y Frontend Canónico (v1.8.0)
+### Arquitectura UI/UX y Frontend Canónico
 - **Plantilla Canónica de Pestaña (`TabTemplate`)**: Estandarización de 2 columnas inmutable (Sidebar de controles con auto-scroll a la izquierda + Viewport de previsualización ocupando el 100% del alto y ancho disponible sin espacios muertos).
 - **Visor Modular Unificado (`UniversalViewer`)**: Núcleo JS centralizado para zoom 8x con paneo, split slider de comparación antes/después, barra de herramientas contextual y miniaturas dinámicas con `ResizeObserver` sin hueco negro.
 - **Shell Global y Control Universal**: Botón universal de recarga en el header (`#btn-universal-reload`), selector de idiomas con menú accesible (`#btn-language-selector`), tarjetas de control normalizadas (`ControlCards`) y sistema de ayuda contextual con popovers flotantes (`(?)`).
@@ -65,9 +85,9 @@ filtros NSFW/SFW.
 | | |
 |---|---|
 | Sistema | Windows 10/11 x64 |
-| GPU | NVIDIA. 8 GB de VRAM para imagen, Editor y Upscaler; 12 GB para vídeo (H3). Probado en RTX 3060 12 GB |
-| Disco | SSD SATA con ~150 GB libres (descarga completa ≈126 GB; ~106 GB son modelos). El paquete LLM incluido añade ~6,5 GB |
-| Programas | `git` para clonar; `curl.exe` ya viene con Windows; `ffmpeg` opcional en el PATH o en `tools/ffmpeg/ffmpeg.exe` (requerido para encadenado >15 s) |
+| GPU | NVIDIA RTX 3000 / 4000 / 5000 (8 GB+ VRAM para imagen, Editor y Upscaler; 12 GB+ para vídeo H3). Probado en RTX 3060 12 GB. Driver NVIDIA >= 570.xx recomendado para CUDA 13.0 (`cu130`). |
+| Disco | SSD SATA/NVMe: 25 GB libres para instalación base (con `-SkipModels` o `-SkipLlm`) / ~120-150 GB libres para descarga completa (modelos ~106 GB + LLM ~6,5 GB). |
+| Programas | Git for Windows (`git` para clonar); `curl.exe` ya viene con Windows; no necesitas preinstalar Python ni Conda (se instalan de forma aislada). `ffmpeg` opcional para encadenado de vídeo >15 s. |
 
 ## Instalar y usar
 
@@ -77,9 +97,10 @@ cd WaifuStudio
 INSTALAR.bat
 ```
 
-`INSTALAR.bat` es un instalador por consola: prepara Python, la app y ComfyUI con nodos
-pinneados, pregunta si quieres descargar los modelos recomendados (~106 GB) y verifica cada
-archivo con SHA256. Es repetible: si se corta, vuelve a ejecutarlo y continúa donde quedó.
+`INSTALAR.bat` es un instalador por consola 100% hermético y aislado: ignora cualquier Python o Conda
+del sistema instalando CPython 3.12.12 portátil y `uv` en local, limpia variables contaminantes,
+prepara la app y ComfyUI con nodos pinneados, pregunta si quieres descargar los modelos recomendados
+y verifica cada archivo con SHA256. Es repetible: si se corta, vuelve a ejecutarlo y continúa donde quedó.
 
 Uso diario:
 

@@ -351,10 +351,8 @@ def _rewire_clip_inputs(graph: dict, loader_id: str, target_id: str) -> None:
         inputs = node.get("inputs")
         if not isinstance(inputs, dict):
             continue
-        for key, value in inputs.items():
-            if key != "clip" or not isinstance(value, (list, tuple)) or len(value) < 2:
-                continue
-            if str(value[0]) == loader_id and value[1] == 1:
+        for key, val in inputs.items():
+            if key == "clip" and isinstance(val, (list, tuple)) and len(val) == 2 and str(val[0]) == str(loader_id) and val[1] == 1:
                 inputs[key] = [target_id, 1]
 
 

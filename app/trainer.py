@@ -414,6 +414,11 @@ def run_training(
         try:
             code = process.wait(timeout=timeout_s)
         except subprocess.TimeoutExpired:
+            if os.name == "nt":
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                    capture_output=True,
+                )
             process.kill()
             process.wait()
             raise EngineError(

@@ -35,6 +35,8 @@ import {
   updateVideoDurationInfo,
 } from "./video_h3.js";
 
+let v2vPreviewObjectUrl = null;
+
 function selectedVideoView() {
   return (
     state.videoViewer.items.find(
@@ -300,6 +302,10 @@ function startNewVideo() {
   if ($("video-last-image")) $("video-last-image").value = "";
   const v2vInput = $("video-v2v-input");
   if (v2vInput) v2vInput.value = "";
+  if (v2vPreviewObjectUrl) {
+    URL.revokeObjectURL(v2vPreviewObjectUrl);
+    v2vPreviewObjectUrl = null;
+  }
   const v2vWrap = $("video-v2v-preview-wrap");
   if (v2vWrap) v2vWrap.classList.add("hidden");
   const v2vPreview = $("video-v2v-preview");
@@ -345,8 +351,13 @@ function removeVideoRef(index) {
     return;
   }
   const removed = state.videoRefs.splice(index, 1)[0];
-  if (removed && removed.url) {
-    URL.revokeObjectURL(removed.url);
+  if (removed) {
+    if (removed.url) {
+      URL.revokeObjectURL(removed.url);
+    }
+    if (removed.name && state.localFilesOriginalPaths) {
+      state.localFilesOriginalPaths.delete(removed.name);
+    }
   }
   updateVideoRefs();
   setVideoStatus(`Referencias: ${state.videoRefs.length}/${VIDEO_REF_LIMIT}`);
@@ -390,8 +401,13 @@ async function addVideoRefs(fileList) {
 function clearVideoRefs() {
   if (state.videoRefs) {
     for (const ref of state.videoRefs) {
-      if (ref && ref.url) {
-        URL.revokeObjectURL(ref.url);
+      if (ref) {
+        if (ref.url) {
+          URL.revokeObjectURL(ref.url);
+        }
+        if (ref.name && state.localFilesOriginalPaths) {
+          state.localFilesOriginalPaths.delete(ref.name);
+        }
       }
     }
     state.videoRefs = [];
@@ -601,8 +617,13 @@ function initVideoTab() {
     const file = event.target.files && event.target.files[0];
     const wrap = $("video-v2v-preview-wrap");
     const preview = $("video-v2v-preview");
+    if (v2vPreviewObjectUrl) {
+      URL.revokeObjectURL(v2vPreviewObjectUrl);
+      v2vPreviewObjectUrl = null;
+    }
     if (file && preview && wrap) {
-      preview.src = URL.createObjectURL(file);
+      v2vPreviewObjectUrl = URL.createObjectURL(file);
+      preview.src = v2vPreviewObjectUrl;
       wrap.classList.remove("hidden");
     } else if (preview && wrap) {
       preview.src = "";

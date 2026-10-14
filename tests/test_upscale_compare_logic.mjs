@@ -143,7 +143,7 @@ assert.equal(getEl("btn-upscale-compare").disabled, false, "Test 2 Falló: Botó
 assert.equal(getEl("btn-upscale-compare").textContent, "Comparar", "Test 2 Falló: Texto debe ser 'Comparar'");
 console.log("✔ Test 2: Botón habilitado al seleccionar imagen normal");
 
-// Test 3: Al seleccionar ítem que es resultado previo de upscale, compara original (#source_gen) vs escalada (#item.id)
+// Test 3: Al seleccionar ítem que es resultado previo de upscale, compara escalada (#item.id) vs original (#source_gen)
 resetAll();
 const srcItem = {
   id: 5,
@@ -167,9 +167,9 @@ state.upscaleGallery.items = [upscaleItem, srcItem];
 selectUpscaleSource(8);
 const urlsT3 = getUpscaleCompareUrls();
 assert.equal(urlsT3.canCompare, true, "Test 3 Falló: canCompare debe ser true");
-assert.equal(urlsT3.before, "/media/5/source.png", "Test 3 Falló: before debe ser /media/5/source.png");
-assert.equal(urlsT3.after, "/media/8/upscaled.png", "Test 3 Falló: after debe ser /media/8/upscaled.png");
-assert.match(urlsT3.label, /#5.*#8/, "Test 3 Falló: label debe mencionar #5 y #8");
+assert.equal(urlsT3.before, "/media/8/upscaled.png", "Test 3 Falló: before debe ser /media/8/upscaled.png");
+assert.equal(urlsT3.after, "/media/5/source.png", "Test 3 Falló: after debe ser /media/5/source.png");
+assert.match(urlsT3.label, /#8.*#5|#5.*#8/, "Test 3 Falló: label debe mencionar #5 y #8");
 console.log("✔ Test 3: Resolución de par previo original vs escalada con source_gen");
 
 // Test 4: Clic en Comparar activa el visor interactivo y cambia texto a 'Cerrar comparación'
@@ -177,8 +177,8 @@ setUpscaleCompareActive(true);
 assert.equal(getEl("btn-upscale-compare").textContent, "Cerrar comparación", "Test 4 Falló: Texto debe cambiar a 'Cerrar comparación'");
 assert.equal(getEl("btn-upscale-compare").getAttribute("aria-pressed"), "true", "Test 4 Falló: aria-pressed debe ser true");
 assert.equal(getEl("upscale-compare").classList.contains("hidden"), false, "Test 4 Falló: upscale-compare no debe tener clase hidden");
-assert.equal(getEl("upscale-compare-before").src, "/media/5/source.png", "Test 4 Falló: before img src incorrecto");
-assert.equal(getEl("upscale-compare-after").src, "/media/8/upscaled.png", "Test 4 Falló: after img src incorrecto");
+assert.equal(getEl("upscale-compare-before").src, "/media/8/upscaled.png", "Test 4 Falló: before img src incorrecto");
+assert.equal(getEl("upscale-compare-after").src, "/media/5/source.png", "Test 4 Falló: after img src incorrecto");
 console.log("✔ Test 4: Activación de visor interactivo antes/después");
 
 // Test 5: Cerrar comparación restaura texto a 'Comparar' y oculta el visor comparador
@@ -228,8 +228,8 @@ assert.equal(state.upscaleLocalFile, null, "Test 8 Falló: upscaleLocalFile debe
 assert.equal(getEl("btn-upscale-compare").disabled, false, "Test 8 Falló: Botón debe estar habilitado tras finishUpscale");
 const urlsT8 = getUpscaleCompareUrls();
 assert.equal(urlsT8.canCompare, true, "Test 8 Falló: canCompare debe ser true");
-assert.equal(urlsT8.before, "blob:mock-local", "Test 8 Falló: before debe ser el blob local preservado");
-assert.equal(urlsT8.after, "/media/20/res.png", "Test 8 Falló: after debe ser el resultado escalado");
+assert.equal(urlsT8.before, "/media/20/res.png", "Test 8 Falló: before debe ser el resultado activo en visor");
+assert.equal(urlsT8.after, "blob:mock-local", "Test 8 Falló: after debe ser el blob local preservado");
 console.log("✔ Test 8: finishUpscale preserva origen local y habilita comparación con resultado");
 
 // Test 9: Caso borde con una única imagen en el sistema (solo image)

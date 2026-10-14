@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
 from contextlib import closing
 from datetime import datetime, timezone
@@ -38,13 +39,15 @@ class Store:
         self.db_path = Path(db_path)
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(str(self.db_path))
+        return sqlite3.connect(self.db_path, timeout=30.0)
 
     def init(self) -> None:
         """Crea el directorio padre y la tabla si faltan; migra `kind` (F4)."""
         try:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             with closing(self._connect()) as conn, conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA synchronous=NORMAL")
                 conn.execute(_SCHEMA)
                 columns = {
                     row[1] for row in conn.execute("PRAGMA table_info(generations)")
@@ -175,11 +178,18 @@ class Store:
         """Elimina todas las generaciones con status in ('error', 'failed'). Devuelve conteo."""
         try:
             with closing(self._connect()) as conn, conn:
+                failed_rows = conn.execute(
+                    "SELECT id FROM generations WHERE status IN ('error', 'failed')"
+                ).fetchall()
+                for (row_id,) in failed_rows:
+                    target_dir = self.db_path.parent / "gallery" / str(row_id)
+                    if target_dir.exists():
+                        shutil.rmtree(target_dir, ignore_errors=True)
                 cursor = conn.execute(
                     "DELETE FROM generations WHERE status IN ('error', 'failed')"
                 )
                 return int(cursor.rowcount)
-        except sqlite3.Error as exc:
+        except (sqlite3.Error, OSError) as exc:
             raise EngineError(f"store delete_failed fallo: {exc}") from exc
 
     def fail_stale(self, message: str = "interrumpido por un reinicio de la app") -> int:

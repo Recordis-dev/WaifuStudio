@@ -96,14 +96,13 @@ def classify_safetensors_file(path: Path) -> tuple[str, bytes]:
     if not keys:
         return "unknown", raw_header
 
-    sample = keys[:128]
     lora_markers = (
-        ".lora_down", ".lora_up", ".lora_A", ".lora_B",
+        ".lora_down", ".lora_up", ".lora_A.", ".lora_B.",
         "lora_unet", "lora_te", "hada_w", "lokr_w",
     )
     if any(
         any(m in k for m in lora_markers) or k.endswith(".alpha")
-        for k in sample
+        for k in keys
     ):
         return "lora", raw_header
 
@@ -215,16 +214,18 @@ def scan_disk_models(cfg: Any, registry: ModelRegistry | None = None) -> list[di
         for path in sorted(scan_dir.rglob("*.safetensors")):
             kind, _ = classify_safetensors_file(path)
             if kind == "checkpoint" and scan_dir != ckpt_dir:
-                ckpt_dir.mkdir(parents=True, exist_ok=True)
-                dest = ckpt_dir / path.name
+                rel = path.relative_to(scan_dir)
+                dest = ckpt_dir / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
                 if not dest.exists():
                     try:
                         shutil.move(str(path), str(dest))
                     except OSError:
                         pass
             elif kind == "anima_unet" and scan_dir != diff_dir:
-                diff_dir.mkdir(parents=True, exist_ok=True)
-                dest = diff_dir / path.name
+                rel = path.relative_to(scan_dir)
+                dest = diff_dir / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
                 if not dest.exists():
                     try:
                         shutil.move(str(path), str(dest))
@@ -339,7 +340,7 @@ def scan_disk_models(cfg: Any, registry: ModelRegistry | None = None) -> list[di
         user_models_path = Path(cfg.data_dir) / "registry" / "models.json"
         try:
             user_reg = ModelRegistry.load_or_empty(user_models_path)
-            for item in registry.models:
+            for item in added:
                 user_reg._replace(item)
             user_reg.save(user_models_path)
         except Exception:
@@ -366,19 +367,24 @@ def infer_lora_family(raw_header: bytes, rel_path: Path) -> str:
     sd_name = str(meta.get("ss_sd_model_name") or "").lower()
     combined_meta = f"{arch} {base} {sd_name}".lower()
 
-    if any(m in combined_meta for m in ("wan", "lightx2v")) or any("wan" in k.lower() for k in keys[:32]):
+    if any(m in combined_meta for m in ("wan", "lightx2v")) or any("wan" in k.lower() for k in keys):
         return "wan"
     if any(m in combined_meta for m in ("h3", "minimax")) or rel_path.name.lower().startswith("minimax_h3"):
         return "h3"
     if "anima" in combined_meta:
         return "anima"
-    if any(k.startswith(("diffusion_model.blocks.", "lora_te_layers_", "net.blocks.")) for k in keys[:64]):
+    if any(k.startswith(("diffusion_model.blocks.", "lora_te_layers_", "net.blocks.")) for k in keys):
         return "anima"
     if any(m in combined_meta for m in ("sdxl", "illustrious", "pony")):
         return "sdxl"
-    if any(k.startswith(("lora_te1_", "lora_te2_")) for k in keys[:64]):
+    if any(k.startswith(("lora_te1_", "lora_te2_")) for k in keys):
         return "sdxl"
-    if any("input_blocks" in k or "output_blocks" in k for k in keys[:64]):
+    if any(
+        "input_blocks" in k
+        or "output_blocks" in k
+        or any(b in k for b in ("lora_unet_down_blocks", "lora_unet_up_blocks", "down_blocks.", "up_blocks."))
+        for k in keys
+    ):
         return "sdxl"
     parts = rel_path.parts
     if len(parts) > 1:

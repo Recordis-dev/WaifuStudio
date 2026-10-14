@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import re
 import shutil
 import uuid
 from typing import Any, Callable
@@ -59,7 +60,10 @@ def _inject_lora_triggers(prompt: str, validated_loras: list[dict]) -> str:
     """Inyecta los triggers de los LoRAs activos si no estan ya en el prompt."""
     if not validated_loras:
         return prompt
+    prompt_tags = {tag.strip().lower() for tag in prompt.split(",") if tag.strip()}
+    prompt_tags_spaces = {tag.replace("_", " ") for tag in prompt_tags}
     lower_prompt = prompt.lower()
+
     triggers: list[str] = []
     for item in validated_loras:
         lora_id = item.get("id")
@@ -72,8 +76,21 @@ def _inject_lora_triggers(prompt: str, validated_loras: list[dict]) -> str:
         trigger = str(lora_entry.get("trigger") or "").strip()
         if not trigger:
             continue
-        if trigger.lower() not in lower_prompt and trigger.lower().replace("_", " ") not in lower_prompt.replace("_", " "):
-            triggers.append(trigger)
+
+        trig_lower = trigger.lower()
+        trig_spaced = trig_lower.replace("_", " ")
+
+        # 1. Comparar contra etiquetas separadas por comas
+        if trig_lower in prompt_tags or trig_spaced in prompt_tags_spaces:
+            continue
+
+        # 2. Comprobar mediante regex de limite de palabra (\b)
+        pattern = r"\b" + re.escape(trig_lower) + r"\b"
+        pattern_spaced = r"\b" + re.escape(trig_spaced) + r"\b"
+        if re.search(pattern, lower_prompt) or re.search(pattern_spaced, lower_prompt.replace("_", " ")):
+            continue
+
+        triggers.append(trigger)
     if not triggers:
         return prompt
     return _merge_tags([*triggers, prompt])

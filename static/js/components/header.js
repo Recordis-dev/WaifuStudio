@@ -90,6 +90,9 @@ export function initLanguageSelector() {
       if (label) label.textContent = lang.toUpperCase();
       options.forEach((o) => o.classList.toggle("active", o === opt));
       dropdown.classList.add("hidden");
+      window.dispatchEvent(
+        new CustomEvent("waifu:language-changed", { detail: { lang } })
+      );
     });
   });
 

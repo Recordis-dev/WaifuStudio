@@ -163,9 +163,7 @@ function randomSeed() {
 
 function updateSeedRandomButton() {
   for (const id of [
-  "btn-seed-random",
-  "btn-video-seed-random",
-  "btn-editor-seed-random",
+    "btn-seed-random",
     "btn-video-seed-random",
     "btn-editor-seed-random",
   ]) {

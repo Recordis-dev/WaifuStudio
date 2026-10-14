@@ -492,7 +492,7 @@ async function saveLoraEntry(event) {
     }
     resetLoraForm();
     await loadLoraLibrary();
-    await loadLoras();
+    await loadLoras({ preserveSelection: true });
   } catch (error) {
     setLoraLibraryStatus(error.message, true);
   }
@@ -517,7 +517,7 @@ async function deleteLoraEntry(loraId, options = {}) {
     resetLoraForm();
   }
   await loadLoraLibrary();
-  await loadLoras();
+  await loadLoras({ preserveSelection: true });
   if (!withFile) {
     setLoraLibraryStatus(`LoRA «${loraId}» quitada del registro (archivo intacto)`);
     return;
@@ -556,7 +556,7 @@ async function uploadLoraFile() {
       input.value = "";
     }
     await loadLoraLibrary();
-    await loadLoras();
+    await loadLoras({ preserveSelection: true });
     const inferred = data.trigger_inferido
       ? ` · trigger: ${data.trigger_inferido}`
       : "";

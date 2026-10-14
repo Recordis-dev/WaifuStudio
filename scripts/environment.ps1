@@ -1,4 +1,10 @@
 $StackRoot = Split-Path -Parent $PSScriptRoot
+$env:PYTHONPATH = $null
+$env:PYTHONHOME = $null
+$env:VIRTUAL_ENV = $null
+$env:CONDA_PREFIX = $null
+$env:CONDA_DEFAULT_ENV = $null
+$env:UV_PYTHON_PREFERENCE = 'only-managed'
 $env:UV_CACHE_DIR = Join-Path $StackRoot 'cache\uv'
 $env:UV_PYTHON_INSTALL_DIR = Join-Path $StackRoot 'python'
 $env:HF_HOME = Join-Path $StackRoot 'cache\huggingface'
@@ -12,3 +18,4 @@ $env:HF_HUB_DISABLE_TELEMETRY = '1'
 foreach ($dir in @($env:UV_CACHE_DIR,$env:UV_PYTHON_INSTALL_DIR,$env:HF_HOME,$env:TORCH_HOME,$env:PIP_CACHE_DIR,$env:TEMP)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
 }
+

@@ -109,7 +109,9 @@ async function pollJob(
     }
   } finally {
     if (manageCancel) {
-      state.activeJobId = null;
+      if (state.activeJobId === jobId) {
+        state.activeJobId = null;
+      }
       setCancelVisible(false, cancelButtonId);
     }
     if (progressFn) {

@@ -39,6 +39,7 @@ param(
     [string]$Root = '',
     [switch]$SkipEngine,
     [switch]$SkipModels,
+    [switch]$SkipLlm,
     [switch]$Yes,
     [switch]$IncludeOptional,
     [switch]$IncludeTrainer,
@@ -59,7 +60,7 @@ $StateDir           = Join-Path $Root '.install-state'
 $ComfyRoot          = Join-Path $Root 'ComfyUI'
 $ComfyModelsRoot    = Join-Path $ComfyRoot 'models'
 $VenvPython         = Join-Path $Root '.venv\Scripts\python.exe'
-$MinFreeBytes       = [long]140000000000
+$MinFreeBytes       = [long]25000000000
 $ComfyUrl           = 'http://127.0.0.1:8288'
 $Cu130Index         = 'https://download.pytorch.org/whl/cu130'
 $script:Pending     = New-Object System.Collections.Generic.List[string]
@@ -124,18 +125,47 @@ function Invoke-Preflight {
     if (-not [System.Environment]::Is64BitOperatingSystem) { throw 'Se requiere Windows x64.' }
     $os = Get-CimInstance -ClassName Win32_OperatingSystem
     Write-Ok ("SO: {0}" -f $os.Caption.Trim())
+    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $gitCmd) {
+        throw 'git no encontrado en PATH. Instala Git for Windows y re-ejecuta.'
+    }
     $gpus = @(Get-CimInstance -ClassName Win32_VideoController | Where-Object { $_.Name -match 'NVIDIA' })
     if ($gpus.Count -eq 0) { throw 'No se detecto GPU NVIDIA (requerida para torch cu130).' }
     Write-Ok ("GPU: {0}" -f $gpus[0].Name)
+    $smiCmd = Get-Command nvidia-smi -ErrorAction SilentlyContinue
+    if ($smiCmd) {
+        try {
+            $smiOut = (& nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader,nounits 2>$null)
+            if ($smiOut) {
+                $gpuLines = @($smiOut)
+                $firstGpu = $gpuLines[0].Split(',')
+                if ($firstGpu.Count -ge 3) {
+                    $gpuName = $firstGpu[0].Trim()
+                    $gpuMemMb = [double]($firstGpu[1].Trim())
+                    $driverVer = $firstGpu[2].Trim()
+                    Write-Ok ("NVIDIA-SMI: {0} | VRAM: {1} MB | Driver: {2}" -f $gpuName, $gpuMemMb, $driverVer)
+                    if ($gpuMemMb -lt 8000) {
+                        Write-Warn ("VRAM detectada ({0} MB) inferior a 8000 MB; modelos grandes o video pueden requerir perfiles ligeros." -f $gpuMemMb)
+                    }
+                    $driverMajor = [int]($driverVer.Split('.')[0])
+                    if ($driverMajor -lt 570) {
+                        Write-Warn 'Driver NVIDIA anterior a 570.xx detectado; para torch cu130 se recomienda actualizar el driver NVIDIA a 570.xx o superior.'
+                    }
+                }
+            }
+        } catch {
+            Write-Warn ("No se pudo consultar detalles completos con nvidia-smi: {0}" -f $_.Exception.Message)
+        }
+    }
     $driveRoot = [System.IO.Path]::GetPathRoot($Root)
     $free = (New-Object System.IO.DriveInfo($driveRoot)).AvailableFreeSpace
     $freeGb = [math]::Round($free / 1e9, 1)
     if ($free -lt $MinFreeBytes) {
-        throw ("Espacio libre insuficiente: {0} GB (minimo 140 GB)." -f $freeGb)
+        throw ("Espacio libre insuficiente: {0} GB (minimo 25 GB)." -f $freeGb)
     }
     Write-Ok ("Espacio libre: {0} GB" -f $freeGb)
-    if ($free -lt 140000000000) {
-        Write-Warn 'espacio justo: el manifiesto required + engine ronda 139 GB; conviene liberar mas antes de continuar.'
+    if ($free -lt 125000000000 -and -not $SkipModels) {
+        Write-Warn 'Menos de 125 GB libres: el paquete completo de modelos requiere ~115 GB; puedes responder n en la pregunta de modelos o usar -SkipModels.'
     }
     foreach ($file in @($ModelsManifestPath, $NodesManifestPath)) {
         if (-not (Test-Path -LiteralPath $file)) { throw ("manifest no encontrado: {0}" -f $file) }
@@ -145,12 +175,27 @@ function Invoke-Preflight {
 
 function Install-Uv {
     Write-Step 'uv'
+    $localUvDir = Join-Path $Root 'tools\uv'
+    $localUvExe = Join-Path $localUvDir 'uv.exe'
+    if (Test-Path -LiteralPath $localUvExe) {
+        $env:Path = ("{0};{1}" -f $localUvDir, $env:Path)
+    }
     $uv = Get-Command uv -ErrorAction SilentlyContinue
+    $needInstall = $false
     if (-not $uv) {
-        Write-Warn 'uv no esta en PATH; instalando con el instalador oficial de astral.sh'
+        $needInstall = $true
+    } else {
+        $version = (& uv --version) 2>&1
+        if ($version -match 'uv 0\.[0-7]\.') {
+            $needInstall = $true
+        }
+    }
+    if ($needInstall) {
+        Write-Warn 'uv no esta en PATH o su version es antigua; instalando con el instalador oficial de astral.sh'
+        $env:UV_INSTALL_DIR = $localUvDir
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Invoke-Expression (Invoke-RestMethod -Uri 'https://astral.sh/uv/install.ps1')
-        $env:Path = ("{0};{1}" -f (Join-Path $env:USERPROFILE '.local\bin'), $env:Path)
+        $env:Path = ("{0};{1};{2}" -f $localUvDir, (Join-Path $env:USERPROFILE '.local\bin'), $env:Path)
         $uv = Get-Command uv -ErrorAction SilentlyContinue
         if (-not $uv) { throw 'uv no quedo disponible tras la instalacion.' }
     }
@@ -165,16 +210,41 @@ function Install-Python {
     Write-Step 'CPython 3.12.12 (uv-managed)'
     $env:UV_PYTHON_INSTALL_DIR = Join-Path $Root 'python'
     Invoke-Tool -Label 'uv python install' -Command 'uv' -ToolArgs @(
-        'python', 'install', '3.12.12', '--no-bin', '--no-registry'
+        'python', 'install', '3.12.12', '--python-preference', 'only-managed', '--no-bin', '--no-registry'
     )
 }
 
 function Install-Venv {
     Write-Step '.venv + requirements de la app'
+    $managedPy = Join-Path $Root 'python\cpython-3.12.12-windows-x86_64-none\python.exe'
+    $venvDir = Join-Path $Root '.venv'
+    $cfgPath = Join-Path $venvDir 'pyvenv.cfg'
+    $managedPyDir = Join-Path $Root 'python'
+    if (Test-Path -LiteralPath $venvDir) {
+        $needRecreate = $false
+        if (-not (Test-Path -LiteralPath $cfgPath)) {
+            $needRecreate = $true
+        } else {
+            $cfgContent = Get-Content -LiteralPath $cfgPath -Raw -ErrorAction SilentlyContinue
+            if (-not $cfgContent -or -not ($cfgContent.Contains($managedPyDir))) {
+                $needRecreate = $true
+            }
+        }
+        if ($needRecreate) {
+            Write-Warn '.venv existente apunta a un Python externo; recreando .venv hermetico...'
+            Remove-Item -LiteralPath $venvDir -Recurse -Force
+        }
+    }
     if (-not (Test-Path -LiteralPath $VenvPython)) {
-        Invoke-Tool -Label 'uv venv' -Command 'uv' -ToolArgs @(
-            'venv', '--python', '3.12.12', (Join-Path $Root '.venv')
-        )
+        if (Test-Path -LiteralPath $managedPy) {
+            Invoke-Tool -Label 'uv venv' -Command 'uv' -ToolArgs @(
+                'venv', '--python', $managedPy, '--python-preference', 'only-managed', $venvDir
+            )
+        } else {
+            Invoke-Tool -Label 'uv venv' -Command 'uv' -ToolArgs @(
+                'venv', '--python', '3.12.12', $venvDir
+            )
+        }
     } else {
         Write-Ok ".venv ya existe"
     }
@@ -213,6 +283,7 @@ function Install-Engine {
         'pip', 'install', '--python', $VenvPython,
         '-r', (Join-Path $ComfyRoot 'requirements.txt')
     )
+    Install-CustomNodes -Nodes $nodes
     Invoke-Tool -Label 'torch cu130' -Command 'uv' -ToolArgs @(
         'pip', 'install', '--python', $VenvPython,
         ("torch=={0}" -f $nodes.runtime.torch.torch),
@@ -225,7 +296,6 @@ function Install-Engine {
         ("triton_windows=={0}" -f $nodes.runtime.triton_windows)
     )
     Install-SageAttention -Nodes $nodes
-    Install-CustomNodes -Nodes $nodes
 }
 
 function Install-SageAttention {
@@ -243,9 +313,13 @@ function Install-SageAttention {
         Get-VerifiedFile -Url $sage.url -Destination $wheel -Sha256 $sage.sha256 -Bytes $sage.bytes
     }
     Assert-FileHash -Path $wheel -Sha256 $sage.sha256 -Bytes $sage.bytes
-    Invoke-Tool -Label 'sageattention' -Command 'uv' -ToolArgs @(
-        'pip', 'install', '--python', $VenvPython, '--no-deps', $wheel
-    )
+    try {
+        Invoke-Tool -Label 'sageattention' -Command 'uv' -ToolArgs @(
+            'pip', 'install', '--python', $VenvPython, '--no-deps', $wheel
+        )
+    } catch {
+        Write-Warn ('SageAttention opcional no pudo instalarse ({0}); el engine usara atencion estandar.' -f $_.Exception.Message)
+    }
 }
 
 function Install-CustomNodes {
@@ -265,7 +339,8 @@ function Install-CustomNodes {
         Write-Step ("nodo {0} @ {1}" -f $node.id, $node.commit)
         if (-not (Test-Path -LiteralPath (Join-Path $dir '.git'))) {
             if (Test-Path -LiteralPath $dir) {
-                throw ("{0} existe y no es un repo git; muevelo o borralo y re-ejecuta." -f $dir)
+                Write-Warn ("{0} existe y no es un repo git; eliminando para clonado limpio..." -f $dir)
+                Remove-Item -LiteralPath $dir -Recurse -Force
             }
             Invoke-Tool -Label ("git clone {0}" -f $node.id) -Command 'git' -ToolArgs @(
                 'clone', $node.url, $dir
@@ -280,9 +355,14 @@ function Install-CustomNodes {
         $head = (& git -C $dir rev-parse HEAD).Trim()
         if ($head -ne $node.commit) { throw ("{0} HEAD {1} != {2}" -f $node.id, $head, $node.commit) }
         $requirements = Join-Path $dir 'requirements.txt'
+        $requirementsNoCupy = Join-Path $dir 'requirements-no-cupy.txt'
         if (Test-Path -LiteralPath $requirements) {
             Invoke-Tool -Label ("requirements {0}" -f $node.id) -Command 'uv' -ToolArgs @(
                 'pip', 'install', '--python', $VenvPython, '-r', $requirements
+            )
+        } elseif (Test-Path -LiteralPath $requirementsNoCupy) {
+            Invoke-Tool -Label ("requirements-no-cupy {0}" -f $node.id) -Command 'uv' -ToolArgs @(
+                'pip', 'install', '--python', $VenvPython, '-r', $requirementsNoCupy
             )
         }
         Write-Ok ("{0} @ {1}" -f $node.id, $head)
@@ -413,6 +493,16 @@ function Install-Models {
         $done++
     }
     Write-Ok ("modelos listos: {0} (opcionales omitidos: {1})" -f $done, $skipped)
+    if (-not $SkipModels) {
+        $downloadModelsScript = Join-Path $Root 'scripts\download_models.py'
+        if (Test-Path -LiteralPath $downloadModelsScript) {
+            try {
+                Invoke-Tool -Label 'download_vdn' -Command $VenvPython -ToolArgs @($downloadModelsScript, '--vdn')
+            } catch {
+                Write-Warn ("Descarga automatica de adaptadores VDN fallo ({0}); puedes reintentar con 'python scripts\download_models.py --vdn'." -f $_.Exception.Message)
+            }
+        }
+    }
     if ($script:Pending.Count -gt 0) {
         Write-Warn ("pendientes de aporte manual: {0}" -f ($script:Pending -join ', '))
         Write-Warn 'Copia los archivos pendientes con nombre y subdir exactos del manifiesto (ver install\README_INSTALL.md).'
@@ -480,7 +570,7 @@ function Confirm-RecommendedModels {
     Write-Host ''
     Write-Host 'Modelos recomendados (Anima + MiniMax H3 + Qwen-Image 2.1 + Upscaler/RIFE + LLM Qwen3.5-9B)' -ForegroundColor Cyan
     Write-Host ("  {0} archivos, ~{1} GB de descarga (SSD SATA recomendado)." -f $summary.Count, $summary.Gb)
-    $answer = Read-Host '¿Instalar modelos recomendados? [S/n]'
+    $answer = Read-Host 'Instalar modelos recomendados? [S/n]'
     if ($answer -match '^(n|no)$') {
         Write-Warn 'Sin modelos: la app arrancara sin modelos registrados; ejecuta INSTALAR.bat cuando quieras.'
         return $false
@@ -525,7 +615,7 @@ function Register-RecommendedModels {
 }
 
 function Install-Llm {
-    if ($SkipModels) { return }
+    if ($SkipLlm) { Write-Warn 'SkipLlm: se omite descarga de LLM'; return }
     $downloadScript = Join-Path $Root 'scripts\download_llm.py'
     if (Test-Path -LiteralPath $downloadScript) {
         Write-Step 'LLM y runtime llama.cpp (scripts\download_llm.py)'
@@ -537,9 +627,16 @@ Write-Host ''
 Write-Host 'WAIFU installer' -ForegroundColor Cyan
 Write-Host ("Raiz: {0}" -f $Root)
 
-Invoke-Preflight
 $environmentScript = Join-Path $Root 'scripts\environment.ps1'
 if (Test-Path -LiteralPath $environmentScript) { . $environmentScript }
+$env:PYTHONPATH = $null
+$env:PYTHONHOME = $null
+$env:VIRTUAL_ENV = $null
+$env:CONDA_PREFIX = $null
+$env:CONDA_DEFAULT_ENV = $null
+$env:UV_PYTHON_PREFERENCE = 'only-managed'
+
+Invoke-Preflight
 
 Install-Uv
 Install-Python

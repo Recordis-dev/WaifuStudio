@@ -36,7 +36,8 @@
       "url": "https://huggingface.co/koongrizzly/MiniMax_H3_int4_W4A8_ConvRot_Pruned/resolve/main/diffusion_models/minimax_h3_fl2va_pruned-w4a8_convrot_pruned.safetensors",
       "revision": "main",
       "license": "URL_VERIFICAR: licencia de koongrizzly sin verificar en disco",
-      "required": true,
+      "required": false,
+      "obsolete": true,
       "notes": "DiT H3 int4 W4A8 ConvRot (Ligero); sha256 completo calculado del archivo instalado y verificado contra el prefijo 8b624de0ab75."
     },
     {
@@ -96,7 +97,7 @@
       "url": "URL_VERIFICAR",
       "civitai_version_id": 3126581,
       "license": "Anima License (CircleStone Labs LLC) - no comercial",
-      "required": true,
+      "required": false,
       "notes": "Civitai models/2458426 v3126581; descarga manual (age-gate); sha256 del registro local (verificado en la descarga de 2026-09-21)."
     },
     {
@@ -108,7 +109,7 @@
       "url": "URL_VERIFICAR",
       "civitai_version_id": 3301424,
       "license": "Anima License (CircleStone Labs LLC) - no comercial",
-      "required": true,
+      "required": false,
       "notes": "Civitai models/2695493 v3301424; descarga manual (age-gate); sha256 del registro local (verificado en la descarga de 2026-09-21)."
     },
     {
