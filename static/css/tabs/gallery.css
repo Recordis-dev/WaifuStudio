@@ -341,3 +341,79 @@
   gap: 8px !important;
   align-items: center !important;
 }
+
+/* Placeholders en cola / generando */
+@keyframes waifu-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.gallery-pending-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  height: 100%;
+  background: rgba(14, 15, 19, 0.95);
+  user-select: none;
+}
+
+.thumb-pending {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 100%;
+  height: 100%;
+  background: rgba(14, 15, 19, 0.95);
+  font-size: 0.65rem;
+  color: var(--muted);
+  user-select: none;
+}
+
+.queue-spinner {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-top-color: rgba(255, 255, 255, 0.65);
+  animation: waifu-spin 0.9s linear infinite;
+}
+
+.gallery-pending-placeholder.is-running .queue-spinner,
+.thumb-pending.is-running .queue-spinner {
+  border: 2px solid rgba(255, 107, 157, 0.25);
+  border-top-color: var(--accent);
+}
+
+.gallery-pending-placeholder.is-queued .queue-spinner,
+.thumb-pending.is-queued .queue-spinner {
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-top-color: rgba(255, 255, 255, 0.55);
+}
+
+.queue-placeholder-text {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.gallery-pending-placeholder.is-running .queue-placeholder-text,
+.thumb-pending.is-running span:last-child {
+  color: var(--accent);
+}
+
+.gallery-card-status.running {
+  color: var(--accent);
+}
+
+.gallery-card-status.queued {
+  color: var(--muted);
+}
+

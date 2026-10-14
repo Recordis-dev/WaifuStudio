@@ -24,7 +24,7 @@ import {
   setVideoProgress,
   getThumbsCapacity,
 } from "../dom.js";
-import { api, postJson, pollJob, cancelJob } from "../api.js";
+import { api, postJson, pollJob, cancelJob, enqueueJobs } from "../api.js";
 import {
   defaultH3Seconds,
   selectedH3Profile,
@@ -125,6 +125,16 @@ function renderVideoThumbs() {
         { once: true }
       );
       button.appendChild(thumb);
+    } else if (item.status === "queued" || item.status === "running") {
+      const pending = document.createElement("span");
+      pending.className = `thumb-pending is-${item.status}`;
+      const spinner = document.createElement("span");
+      spinner.className = "queue-spinner";
+      const label = document.createElement("span");
+      label.textContent = item.status === "running" ? "Generando" : "En cola";
+      pending.appendChild(spinner);
+      pending.appendChild(label);
+      button.appendChild(pending);
     } else {
       const missing = document.createElement("span");
       missing.className = "thumb-missing";
@@ -430,9 +440,6 @@ function setVideoJobStatus(text, isError = false) {
 }
 
 async function generateVideo() {
-  if (state.busy) {
-    return;
-  }
   const engine = $("video-engine") ? $("video-engine").value : "h3";
   const mode = $("video-mode") ? $("video-mode").value : "i2v";
   if (mode === "ref2va") {
@@ -527,24 +534,26 @@ async function generateVideo() {
     setVideoStatus(error.message, true);
     return;
   }
-  state.busy = true;
-  $("btn-video-generate").disabled = true;
+  const btn = $("btn-video-generate");
+  if (btn) btn.disabled = true;
   setVideoStatus("Encolando...");
   try {
     const data = await postJson("/api/video/generate", payload);
-    await pollJob(
-      data.job_id,
-      setVideoJobStatus,
-      reloadVideoViewerFirstPage,
-      setVideoProgress,
-      true,
-      "btn-video-cancel"
-    );
+    reloadVideoViewerFirstPage().catch(() => {});
+    await enqueueJobs(data.job_id, {
+      statusFn: setVideoJobStatus,
+      onDone: reloadVideoViewerFirstPage,
+      progressFn: setVideoProgress,
+      manageCancel: true,
+      cancelButtonId: "btn-video-cancel",
+    });
   } catch (error) {
     setVideoStatus(error.message, true);
   } finally {
-    state.busy = false;
-    $("btn-video-generate").disabled = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = state.activeJobsCount > 0 ? `Encolar (${state.activeJobsCount})` : "Generar";
+    }
   }
 }
 
@@ -611,6 +620,12 @@ function initVideoTab() {
   });
   on("btn-video-generate", "click", generateVideo);
   on("btn-video-cancel", "click", cancelJob);
+  window.addEventListener("waifu:queue-updated", () => {
+    const btn = $("btn-video-generate");
+    if (btn) {
+      btn.textContent = state.activeJobsCount > 0 ? `Encolar (${state.activeJobsCount})` : "Generar";
+    }
+  });
   on("video-engine", "change", applyVideoEngine);
   on("video-mode", "change", applyVideoEngine);
   on("video-v2v-input", "change", (event) => {

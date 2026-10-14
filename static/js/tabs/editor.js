@@ -27,7 +27,7 @@ import {
   downloadUrlFor,
   getThumbsCapacity,
 } from "../dom.js";
-import { api, postJson, pollJob } from "../api.js";
+import { api, postJson, pollJob, enqueueJobs } from "../api.js";
 import { openLightbox } from "../components/lightbox.js";
 import {
   setEditorCompareSlot2,
@@ -532,9 +532,6 @@ function downloadEditorResult() {
 }
 
 async function generateEditor() {
-  if (state.editorBusy) {
-    return;
-  }
   const prompt = $("editor-prompt").value.trim();
   if (!prompt) {
     setEditorStatus("El prompt no puede estar vacío", true);
@@ -594,27 +591,29 @@ async function generateEditor() {
   if (state.editorRefs.length) {
     payload.ref_images_b64 = state.editorRefs.map((ref) => ref.b64);
   }
-  state.editorBusy = true;
-  updateEditorControls();
+  const btn = $("btn-editor-generate");
+  if (btn) btn.disabled = true;
   setEditorStatus("Encolando...");
   try {
     const data = await postJson("/api/editor/generate", payload);
-    await pollJob(
-      data.job_id,
-      setEditorStatus,
-      async (job) => {
+    loadEditorGallery(1).catch(() => {});
+    await enqueueJobs(data.job_id, {
+      statusFn: setEditorStatus,
+      onDone: async (job) => {
         showEditorResult(job);
         await reloadImageViewerFirstPage();
         await loadEditorGallery(1);
       },
-      setEditorProgress,
-      false
-    );
+      progressFn: setEditorProgress,
+      manageCancel: false,
+    });
   } catch (error) {
     setEditorStatus(error.message, true);
   } finally {
-    state.editorBusy = false;
     updateEditorControls();
+    if (btn) {
+      btn.textContent = state.activeJobsCount > 0 ? `Encolar (${state.activeJobsCount})` : "Generar";
+    }
   }
 }
 
@@ -673,6 +672,12 @@ function initEditorTab() {
     }
   });
   on("btn-editor-open-gallery", "click", openEditorResultInGallery);
+  window.addEventListener("waifu:queue-updated", () => {
+    const btn = $("btn-editor-generate");
+    if (btn) {
+      btn.textContent = state.activeJobsCount > 0 ? `Encolar (${state.activeJobsCount})` : "Generar";
+    }
+  });
   on("btn-editor-compare", "click", () =>
     setEditorCompareEnabled(!editorCompareActive)
   );

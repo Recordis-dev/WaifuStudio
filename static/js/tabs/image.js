@@ -19,7 +19,7 @@ import {
   setProgress,
   setVideoProgress,
 } from "../dom.js";
-import { api, postJson, pollJob, cancelJob } from "../api.js";
+import { api, postJson, pollJob, cancelJob, enqueueJobs } from "../api.js";
 import { ResolutionKit } from "../components/resolution_kit.js";
 import {
   collectPromptZoneTags,
@@ -411,9 +411,6 @@ async function startNewGeneration() {
 }
 
 async function generate() {
-  if (state.busy) {
-    return;
-  }
   flushPendingZoneInputs();
   const prompt = composePrompt();
   if (!prompt) {
@@ -440,21 +437,27 @@ async function generate() {
     params: readBaseParams(),
     ...sizePayload,
   };
+  const batchEl = $("batch-size");
+  const batchSize = batchEl ? Math.min(4, Math.max(1, Number(batchEl.value) || 1)) : 1;
+  if (batchSize > 1) {
+    payload.batch_size = batchSize;
+  }
   const file = $("ref-image").files[0];
   if (file) {
     payload.ref_image_b64 = await readFileBase64(file);
     payload.strength = Number($("strength").value);
   }
-  state.busy = true;
-  updateGenerateState();
+  const btn = $("btn-generate");
+  if (btn) btn.disabled = true;
   setStatus("Encolando...");
   try {
     const data = await postJson("/api/generate", payload);
-    await pollJob(data.job_id, setStatus, reloadImageViewerFirstPage);
+    const ids = Array.isArray(data.job_ids) && data.job_ids.length ? data.job_ids : [data.job_id];
+    reloadImageViewerFirstPage().catch(() => {});
+    await enqueueJobs(ids, { statusFn: setStatus, onDone: reloadImageViewerFirstPage });
   } catch (error) {
     setStatus(error.message, true);
   } finally {
-    state.busy = false;
     updateGenerateState();
   }
 }
@@ -631,6 +634,9 @@ function initImageTab() {
   }
   window.addEventListener("waifu:models-refresh", () => {
     refreshModelsCatalog().catch((err) => console.warn("models refresh:", err));
+  });
+  window.addEventListener("waifu:queue-updated", () => {
+    updateGenerateState();
   });
   on("btn-reload", "click", () => {
     refreshModelsCatalog().catch((err) => console.warn("models reload:", err));

@@ -34,6 +34,7 @@ import { attachVideoFrameFromUrl, attachFileInputFromUrl } from "./video.js";
 import { reuseGeneration } from "./image.js";
 
 let galleryModalItem = null;
+let galleryPollTimer = null;
 
 function galleryKindLabel(kind) {
   if (kind === "image") {
@@ -47,10 +48,10 @@ function galleryKindLabel(kind) {
 
 function galleryStatusLabel(status) {
   if (status === "queued") {
-    return "en cola";
+    return "En cola";
   }
   if (status === "running") {
-    return "generando";
+    return "Generando";
   }
   if (status === "error") {
     return "error";
@@ -114,6 +115,17 @@ function renderGalleryTab() {
       img.alt = item.prompt || `Generación #${item.id}`;
       img.loading = "lazy";
       media.appendChild(img);
+    } else if (item.status === "queued" || item.status === "running") {
+      const placeholder = document.createElement("span");
+      placeholder.className = "gallery-pending-placeholder is-" + item.status;
+      const spinner = document.createElement("span");
+      spinner.className = "queue-spinner";
+      const txt = document.createElement("span");
+      txt.className = "queue-placeholder-text";
+      txt.textContent = item.status === "running" ? "Generando" : "En cola";
+      placeholder.appendChild(spinner);
+      placeholder.appendChild(txt);
+      media.appendChild(placeholder);
     } else {
       const missing = document.createElement("span");
       missing.className = "thumb-missing";
@@ -168,6 +180,21 @@ async function loadGalleryTab(page = 1) {
   gallery.page = wanted;
   gallery.items = items;
   renderGalleryTab();
+
+  if (galleryPollTimer) {
+    clearTimeout(galleryPollTimer);
+    galleryPollTimer = null;
+  }
+  const hasPending = items.some(
+    (item) => item.status === "queued" || item.status === "running"
+  );
+  if (hasPending) {
+    galleryPollTimer = setTimeout(() => {
+      if (state.activeTab === "gallery") {
+        loadGalleryTab(state.galleryTab.page).catch(() => {});
+      }
+    }, 2000);
+  }
 }
 
 function openGalleryModal(item) {
@@ -480,6 +507,11 @@ function initGalleryTab() {
     const target = event.target;
     if (target && target.tagName === "IMG" && target.getAttribute("src")) {
       openLightbox(target.getAttribute("src"), target.alt || "Galería");
+    }
+  });
+  window.addEventListener("waifu:queue-updated", () => {
+    if (state.activeTab === "gallery") {
+      loadGalleryTab(state.galleryTab.page).catch(() => {});
     }
   });
 }

@@ -224,7 +224,7 @@ def run_generation(
         graph = patch_params(graph, **applied)
         preprompt = job.get("preprompt") or entry.preprompt or DEFAULT_PREPROMPT
         prompt_text = _inject_lora_triggers(job["prompt"], validated_loras)
-        preprompt_family = entry.family if entry.family in ("anima",) else DEFAULT_FAMILY
+        preprompt_family = entry.family or DEFAULT_FAMILY
         positive, negative = apply_preprompt(
             prompt_text, family=preprompt_family, name=preprompt
         )
@@ -416,6 +416,12 @@ async def api_generate(request: Request, payload: dict = Body(...)) -> Any:
         (input_dir / ref_image).write_bytes(raw)
     if ref_image is not None and strength is None:
         strength = DEFAULT_STRENGTH
+    raw_batch = payload.get("batch_size", 1)
+    if raw_batch is None:
+        raw_batch = 1
+    if isinstance(raw_batch, bool) or not isinstance(raw_batch, int) or not (1 <= raw_batch <= 4):
+        return JSONResponse(status_code=400, content={"error": "batch_size invalido; usar 1..4"})
+
     stored_params = dict(params)
     stored_params["preprompt"] = preprompt
     stored_params["rating"] = rating
@@ -423,24 +429,46 @@ async def api_generate(request: Request, payload: dict = Body(...)) -> Any:
     if ref_image is not None:
         stored_params["strength"] = strength
         stored_params["ref_image"] = ref_image
-    gen_id = st.add(entry.id, prompt.strip(), negative, stored_params)
-    job = {
-        "gen_id": gen_id,
-        "model_id": entry.id,
-        "prompt": prompt.strip(),
-        "negative": negative,
-        "preprompt": preprompt,
-        "params": params,
-        "loras": loras,
-        "ref_image": ref_image,
-        "strength": strength,
+
+    job_ids: list[str] = []
+    gen_ids: list[int] = []
+
+    for idx in range(raw_batch):
+        item_params = dict(params)
+        item_stored = dict(stored_params)
+        if idx > 0:
+            if isinstance(item_params.get("seed"), int):
+                item_params["seed"] = item_params["seed"] + idx
+                item_stored["seed"] = item_params["seed"]
+        gen_id = st.add(entry.id, prompt.strip(), negative, item_stored)
+        job = {
+            "gen_id": gen_id,
+            "model_id": entry.id,
+            "prompt": prompt.strip(),
+            "negative": negative,
+            "preprompt": preprompt,
+            "params": item_params,
+            "loras": loras,
+            "ref_image": ref_image,
+            "strength": strength,
+        }
+        _JOBS[gen_id] = {
+            "prompt_id": None,
+            "tracker": None,
+            "status": "queued",
+            "engine": None,
+        }
+        job_id = queue.submit(job)
+        request.app.state.jobs[job_id] = job
+        job_ids.append(job_id)
+        gen_ids.append(gen_id)
+
+    if "batch_size" not in payload or raw_batch == 1:
+        return {"job_id": job_ids[0]}
+    return {
+        "job_id": job_ids[0],
+        "job_ids": job_ids,
+        "gen_ids": gen_ids,
+        "batch_size": raw_batch,
     }
-    _JOBS[gen_id] = {
-        "prompt_id": None,
-        "tracker": None,
-        "status": "queued",
-        "engine": None,
-    }
-    job_id = queue.submit(job)
-    request.app.state.jobs[job_id] = job
-    return {"job_id": job_id}
+

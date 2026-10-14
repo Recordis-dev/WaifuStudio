@@ -49,6 +49,7 @@
         <div class="generate-block">
           <div class="generate-row">
             <button id="btn-generate" class="primary" type="button">Generar</button>
+            <select id="batch-size" class="batch-size-select" title="Cantidad de imagenes por lote (1 a 4)" aria-label="Cantidad de imagenes"><option value="1" selected>x1</option><option value="2">x2</option><option value="3">x3</option><option value="4">x4</option></select>
             <button id="btn-cancel" class="hidden" type="button">Cancelar</button>
             <button id="btn-seed-random" type="button" title="Seed aleatoria" aria-pressed="false">🎲</button>
           </div>
@@ -716,7 +717,7 @@ non_diegetic_music: &lt;música instrumental o None&gt;</pre>
 
       <section class="gallery-panel tab-viewport">
         <div class="gallery-header">
-          <h2>Editor (Qwen-Image 2.1) <button type="button" class="btn-help" data-help="Edición de imágenes con IA. Usa tamaño Original (1ª ref) y CFG=1 para óptimos resultados certificados.">?</button></h2>
+          <h2>Editor (Qwen-Image 2.1) <button type="button" class="btn-help" data-help="Visor de edición Qwen-Image 2.1 Uncensored. Dibuja máscara de inpainting o edita con hasta 10 imágenes de referencia. Requiere los 3 archivos de Qwen-Image 2.1 Uncensored en ComfyUI/models (diffusion_models, text_encoders, vae) y el nodo ComfyUI-GGUF actualizado.">?</button></h2>
         </div>
         <div id="editor-preview" class="image-preview">
           <img id="editor-preview-img" class="hidden" alt="Imagen del editor">
@@ -742,7 +743,7 @@ non_diegetic_music: &lt;música instrumental o None&gt;</pre>
             <button id="btn-editor-download" type="button">Descargar</button>
           </div>
         </div>
-        <p class="editor-placeholder">Qwen-Image 2.1 (GGUF UC Q4_K_M + text encoder INT8 ConvRot + VAE 2.1 bf16). «Generar» cuando los tres archivos están instalados; el resultado aparece en el visor y en la galería.</p>
+        <p class="editor-placeholder hidden" style="display:none !important">Qwen-Image 2.1 (GGUF UC Q4_K_M + text encoder INT8 ConvRot + VAE 2.1 bf16). «Generar» cuando los tres archivos están instalados; el resultado aparece en el visor y en la galería.</p>
         <section id="editor-gallery" class="editor-gallery">
           <h3>Galería</h3>
           <div id="editor-gallery-thumbs" class="image-thumbs"></div>

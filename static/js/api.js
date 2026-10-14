@@ -76,10 +76,19 @@ async function pollJob(
     state.activeJobId = jobId;
     setCancelVisible(true, cancelButtonId);
   }
+  let lastStatus = null;
   try {
     for (;;) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       const job = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
+      if (job.status !== lastStatus) {
+        lastStatus = job.status;
+        window.dispatchEvent(
+          new CustomEvent("waifu:queue-updated", {
+            detail: { count: state.activeJobsCount, status: job.status },
+          })
+        );
+      }
       if (job.status === "queued" || job.status === "running") {
         if (progressFn) {
           progressFn(job.progress);
@@ -121,6 +130,56 @@ async function pollJob(
 }
 
 
+async function enqueueJobs(jobIds, options = {}) {
+  const ids = (Array.isArray(jobIds) ? jobIds : [jobIds]).filter(Boolean);
+  for (const id of ids) {
+    state.jobQueue.push({ jobId: id, ...options });
+  }
+
+  state.activeJobsCount = state.jobQueue.length + (state.jobQueueRunning ? 1 : 0);
+  window.dispatchEvent(
+    new CustomEvent("waifu:queue-updated", { detail: { count: state.activeJobsCount } })
+  );
+
+  if (state.activeJobsCount > 1 && options.statusFn) {
+    options.statusFn("En cola (" + state.activeJobsCount + " tareas)...");
+  }
+
+  if (!state.jobQueueRunning) {
+    (async () => {
+      state.jobQueueRunning = true;
+      state.busy = true;
+      while (state.jobQueue.length > 0) {
+        const item = state.jobQueue.shift();
+        state.activeJobsCount = state.jobQueue.length + 1;
+        window.dispatchEvent(
+          new CustomEvent("waifu:queue-updated", { detail: { count: state.activeJobsCount } })
+        );
+
+        await pollJob(
+          item.jobId,
+          item.statusFn,
+          item.onDone,
+          item.progressFn,
+          item.manageCancel,
+          item.cancelButtonId
+        );
+
+        state.activeJobsCount = state.jobQueue.length + (state.jobQueue.length > 0 ? 1 : 0);
+        window.dispatchEvent(
+          new CustomEvent("waifu:queue-updated", { detail: { count: state.activeJobsCount } })
+        );
+      }
+      state.busy = false;
+      state.jobQueueRunning = false;
+      state.activeJobsCount = 0;
+      window.dispatchEvent(
+        new CustomEvent("waifu:queue-updated", { detail: { count: 0 } })
+      );
+    })();
+  }
+}
+
 export {
   api,
   postJson,
@@ -128,4 +187,5 @@ export {
   setCancelVisible,
   cancelJob,
   pollJob,
+  enqueueJobs,
 };

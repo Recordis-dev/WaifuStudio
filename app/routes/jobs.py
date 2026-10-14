@@ -39,6 +39,31 @@ def _empty_progress() -> dict:
 router = APIRouter()
 
 
+@router.get("/api/jobs")
+async def api_jobs_list(request: Request) -> Any:
+    queue = request.app.state.queue
+    all_jobs = list((getattr(request.app.state, "jobs", None) or {}).items())
+    items: list[dict[str, Any]] = []
+    for jid, job in all_jobs:
+        try:
+            status = queue.status(jid)
+        except EngineError:
+            continue
+        if status in ("queued", "running"):
+            items.append(
+                {
+                    "job_id": jid,
+                    "gen_id": (job or {}).get("gen_id"),
+                    "status": status,
+                }
+            )
+    return {
+        "items": items,
+        "queued": sum(1 for x in items if x["status"] == "queued"),
+        "running": sum(1 for x in items if x["status"] == "running"),
+    }
+
+
 @router.get("/api/jobs/{job_id}")
 async def api_job(job_id: str, request: Request) -> Any:
     queue = request.app.state.queue

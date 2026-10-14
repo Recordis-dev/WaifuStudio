@@ -1626,8 +1626,8 @@ input[type="checkbox"] {
 }
 
 /* Miniaturas fluidas en todas las pestañas (100% ancho, auto-fill sin hueco negro) */
-.image-thumbs,
-.video-thumbs {
+.image-thumbs:not(.hidden),
+.video-thumbs:not(.hidden) {
   display: grid !important;
   grid-template-columns: repeat(auto-fill, minmax(95px, 1fr)) !important;
   width: 100% !important;
@@ -1636,3 +1636,24 @@ input[type="checkbox"] {
   margin-top: 0.6rem !important;
   flex: 0 0 auto !important;
 }
+
+.image-thumbs.hidden,
+.video-thumbs.hidden {
+  display: none !important;
+}
+
+.batch-size-select {
+  width: 64px;
+  min-width: 64px;
+  box-sizing: border-box;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  height: 100%;
+}
+

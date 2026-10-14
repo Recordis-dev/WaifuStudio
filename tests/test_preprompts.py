@@ -59,11 +59,25 @@ class GoldenTests(unittest.TestCase):
 
 
 class ApiTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.data_dir = Path(self._tmp.name) / "data"
+        patcher = mock.patch.dict(
+            os.environ, {"WAIFU_DATA_DIR": str(self.data_dir)}
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_list_families(self):
         self.assertEqual(list_families(), ["anima"])
 
     def test_list_preprompts_ordenado(self):
         self.assertEqual(list_preprompts("anima"), sorted(GOLDEN))
+
+    def test_familia_sdxl_alias_soportado(self):
+        self.assertEqual(list_preprompts("sdxl"), sorted(GOLDEN))
+        self.assertEqual(get_preprompt("sdxl", "glossy"), GOLDEN["glossy"])
 
     def test_get_preprompt_devuelve_copia(self):
         first = get_preprompt("anima", "glossy")

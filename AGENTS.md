@@ -1,4 +1,4 @@
-# AGENTS.md — Guía de Instalación, Diagnóstico y Desarrollo para Agentes IA (WaifuStudio v1.8.1)
+# AGENTS.md — Guía de Instalación, Diagnóstico y Desarrollo para Agentes IA (WaifuStudio v1.9.0)
 
 Este archivo es la autoridad técnica embebida del repositorio **WaifuStudio** (versión compactada del plano de control `.agents`). Tiene dos propósitos:
 1. **Asistir al usuario final** en la instalación, configuración y resolución de problemas en máquinas Windows con GPUs NVIDIA RTX 3000 / 4000 / 5000 (8 GB+ VRAM).

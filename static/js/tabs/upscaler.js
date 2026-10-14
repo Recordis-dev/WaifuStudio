@@ -18,7 +18,7 @@ import {
   setUpscaleStatus,
   getThumbsCapacity,
 } from "../dom.js";
-import { api, postJson, pollJob, cancelJob } from "../api.js";
+import { api, postJson, pollJob, cancelJob, enqueueJobs } from "../api.js";
 import { openLightbox } from "../components/lightbox.js";
 import { imageViewUrl, reloadImageViewerFirstPage } from "./image_viewer.js";
 import { reloadVideoViewerFirstPage, videoEngineLabel, videoViewUrl } from "./video.js";
@@ -154,9 +154,32 @@ function hasItemUpscalePair(item) {
 let upscaleCompareActive = false;
 let upscaleCompareRatio = 0.5;
 let upscaleCompareDragging = false;
+const upscaleCompareView = { scale: 1, x: 0, y: 0, panning: false, startX: 0, startY: 0 };
 
 function isUpscaleCompareActive() {
   return upscaleCompareActive;
+}
+
+function applyUpscaleCompareTransform() {
+  const before = $("upscale-compare-before");
+  const after = $("upscale-compare-after");
+  const transform = `translate(${upscaleCompareView.x}px, ${upscaleCompareView.y}px) scale(${upscaleCompareView.scale})`;
+  if (before) {
+    before.style.transform = transform;
+    before.style.transformOrigin = "center center";
+  }
+  if (after) {
+    after.style.transform = transform;
+    after.style.transformOrigin = "center center";
+  }
+}
+
+function resetUpscaleCompareZoom() {
+  upscaleCompareView.scale = 1;
+  upscaleCompareView.x = 0;
+  upscaleCompareView.y = 0;
+  upscaleCompareView.panning = false;
+  applyUpscaleCompareTransform();
 }
 
 function applyUpscaleCompare() {
@@ -170,9 +193,11 @@ function applyUpscaleCompare() {
   handle.style.left = `${percent}%`;
   handle.setAttribute("aria-valuenow", String(percent));
   if (label) label.textContent = `${percent}%`;
+  applyUpscaleCompareTransform();
 }
 
 function setUpscaleCompareImages(beforeUrl, afterUrl) {
+  resetUpscaleCompareZoom();
   state.upscaleCompareBeforeUrl = beforeUrl || null;
   state.upscaleCompareAfterUrl = afterUrl || null;
   const beforeImg = $("upscale-compare-before");
@@ -390,6 +415,7 @@ function setUpscaleCompareActive(active) {
     }
     applyUpscaleCompare();
   } else {
+    resetUpscaleCompareZoom();
     if (compare) compare.classList.add("hidden");
     state.upscaleCompareSlot2 = null;
     updateUpscaleSourceView();
@@ -735,9 +761,6 @@ async function finishVideoUpscale() {
 }
 
 async function generateUpscale() {
-  if (state.busy) {
-    return;
-  }
   const kind = upscaleKind();
   const local = kind === "image" ? state.upscaleLocalFile : null;
   const source = local ? null : selectedUpscaleSource();
@@ -807,24 +830,26 @@ async function generateUpscale() {
     state.upscaleLastResultUrl = null;
     state.upscaleLastResultId = null;
   }
-  state.busy = true;
-  $("btn-upscale").disabled = true;
+  const btn = $("btn-upscale");
+  if (btn) btn.disabled = true;
   setUpscaleStatus("Encolando...");
   try {
     const data = await postJson("/api/upscale", payload);
-    await pollJob(
-      data.job_id,
-      setUpscaleStatus,
-      kind === "image" ? finishUpscale : finishVideoUpscale,
-      setUpscaleProgress,
-      true,
-      "btn-upscale-cancel"
-    );
+    loadUpscaleGallery(1).catch(() => {});
+    await enqueueJobs(data.job_id, {
+      statusFn: setUpscaleStatus,
+      onDone: kind === "image" ? finishUpscale : finishVideoUpscale,
+      progressFn: setUpscaleProgress,
+      manageCancel: true,
+      cancelButtonId: "btn-upscale-cancel",
+    });
   } catch (error) {
     setUpscaleStatus(error.message, true);
   } finally {
-    state.busy = false;
-    $("btn-upscale").disabled = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = state.activeJobsCount > 0 ? `Encolar (${state.activeJobsCount})` : "Escalar";
+    }
   }
 }
 
@@ -834,6 +859,12 @@ function initUpscalerTab() {
     clearUpscaleSelection();
     applyUpscaleKind();
     loadUpscaleGallery(1).catch((error) => setUpscaleStatus(error.message, true));
+  });
+  window.addEventListener("waifu:queue-updated", () => {
+    const btn = $("btn-upscale");
+    if (btn) {
+      btn.textContent = state.activeJobsCount > 0 ? `Encolar (${state.activeJobsCount})` : "Escalar";
+    }
   });
   on("upscale-file", "change", (event) => {
     const file = (event.target.files || [])[0];
@@ -925,14 +956,65 @@ function initUpscalerTab() {
 
   const compareStage = $("upscale-compare-stage");
   if (compareStage) {
+    compareStage.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const current = upscaleCompareView.scale;
+      let next = Math.min(8, Math.max(1, current * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+      if (next <= 1.02) {
+        upscaleCompareView.scale = 1;
+        upscaleCompareView.x = 0;
+        upscaleCompareView.y = 0;
+      } else {
+        upscaleCompareView.scale = next;
+      }
+      applyUpscaleCompareTransform();
+    }, { passive: false });
+
     compareStage.addEventListener("pointerdown", (e) => {
       if (e.target === compareHandle || (compareHandle && compareHandle.contains(e.target))) return;
       if (e.button !== 0 && e.pointerType === "mouse") return;
+      if (upscaleCompareView.scale > 1) {
+        e.preventDefault();
+        upscaleCompareView.panning = true;
+        upscaleCompareView.startX = e.clientX - upscaleCompareView.x;
+        upscaleCompareView.startY = e.clientY - upscaleCompareView.y;
+        if (compareStage.setPointerCapture) {
+          try {
+            compareStage.setPointerCapture(e.pointerId);
+          } catch (_err) {}
+        }
+        return;
+      }
       const rect = compareStage.getBoundingClientRect();
       if (rect.width <= 0) return;
       let ratio = (e.clientX - rect.left) / rect.width;
       upscaleCompareRatio = Math.max(0.01, Math.min(0.99, ratio));
       applyUpscaleCompare();
+    });
+
+    compareStage.addEventListener("pointermove", (e) => {
+      if (!upscaleCompareView.panning) return;
+      e.preventDefault();
+      upscaleCompareView.x = e.clientX - upscaleCompareView.startX;
+      upscaleCompareView.y = e.clientY - upscaleCompareView.startY;
+      applyUpscaleCompareTransform();
+    });
+
+    const endPan = (e) => {
+      if (upscaleCompareView.panning) {
+        upscaleCompareView.panning = false;
+        if (compareStage.releasePointerCapture && e && e.pointerId) {
+          try {
+            compareStage.releasePointerCapture(e.pointerId);
+          } catch (_err) {}
+        }
+      }
+    };
+    compareStage.addEventListener("pointerup", endPan);
+    compareStage.addEventListener("pointercancel", endPan);
+
+    compareStage.addEventListener("dblclick", () => {
+      resetUpscaleCompareZoom();
     });
   }
 

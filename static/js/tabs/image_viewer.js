@@ -116,6 +116,16 @@ function renderImageThumbs() {
       img.alt = item.prompt || `Generación #${item.id}`;
       img.loading = "lazy";
       button.appendChild(img);
+    } else if (item.status === "queued" || item.status === "running") {
+      const pending = document.createElement("span");
+      pending.className = "thumb-pending is-" + item.status;
+      const spinner = document.createElement("span");
+      spinner.className = "queue-spinner";
+      const txt = document.createElement("span");
+      txt.textContent = item.status === "running" ? "Generando" : "En cola";
+      pending.appendChild(spinner);
+      pending.appendChild(txt);
+      button.appendChild(pending);
     } else {
       const missing = document.createElement("span");
       missing.className = "thumb-missing";
@@ -189,6 +199,8 @@ async function reloadImageViewerFirstPage() {
 
 function initImageViewer() {
   on("image-preview", "click", () => {
+    const cmp = $("image-compare");
+    if (state.imageCompareActive || (cmp && !cmp.classList.contains("hidden"))) return;
     const item = selectedImageView();
     const url = imageViewUrl(item);
     if (url) {
@@ -214,6 +226,9 @@ function initImageViewer() {
   on("btn-toggle-image-thumbs", "click", () =>
     toggleThumbs("image-thumbs", "btn-toggle-image-thumbs")
   );
+  window.addEventListener("waifu:queue-updated", () => {
+    reloadImageViewerFirstPage().catch(() => {});
+  });
 }
 
 export {

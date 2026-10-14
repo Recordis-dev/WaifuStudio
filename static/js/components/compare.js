@@ -207,6 +207,9 @@ function initImageCompareInteractions() {
     if (compare) compare.classList.remove("dragging");
   });
 
+  on("image-compare", "click", (e) => e.stopPropagation());
+  handle.addEventListener("click", (e) => e.stopPropagation());
+
   handle.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
     event.preventDefault();

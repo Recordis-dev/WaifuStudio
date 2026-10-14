@@ -177,6 +177,13 @@ def delete_custom(name: str) -> bool:
     return True
 
 
+FAMILY_ALIASES = {
+    "sdxl": "anima",
+    "illustrious": "anima",
+    "pony": "anima",
+}
+
+
 def list_families() -> list[str]:
     """Nombres de familia registrados, ordenados."""
     return sorted(FAMILY_PREPROMPTS)
@@ -188,6 +195,7 @@ def list_preprompts(family: str) -> list[str]:
     Los propios van al final, ordenados. EngineError si la familia no existe;
     un almacen de propios corrupto no rompe los certificados.
     """
+    family = FAMILY_ALIASES.get(family, family)
     if not isinstance(family, str) or family not in FAMILY_PREPROMPTS:
         raise EngineError(f"familia de preprompts desconocida: {family!r}")
     names = sorted(FAMILY_PREPROMPTS[family])
@@ -205,6 +213,7 @@ def list_preprompts(family: str) -> list[str]:
 
 def get_preprompt(family: str, name: str) -> dict[str, str]:
     """Copia de {"positive": str, "negative": str}; el certificado gana al propio."""
+    family = FAMILY_ALIASES.get(family, family)
     if not isinstance(family, str) or family not in FAMILY_PREPROMPTS:
         raise EngineError(f"familia de preprompts desconocida: {family!r}")
     preprompts = FAMILY_PREPROMPTS[family]

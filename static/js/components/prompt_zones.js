@@ -329,7 +329,12 @@ function updateGenerateState() {
   if (!button) {
     return;
   }
-  button.disabled = state.busy || (!composePrompt() && !hasPendingZoneInput());
+  button.disabled = !composePrompt() && !hasPendingZoneInput();
+  if (state.activeJobsCount > 0) {
+    button.textContent = "Encolar (" + state.activeJobsCount + ")";
+  } else {
+    button.textContent = "Generar";
+  }
 }
 
 function removeTagFromZone(zone, tag, subcat) {
