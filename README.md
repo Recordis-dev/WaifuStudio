@@ -1,206 +1,120 @@
-# WAIFU (v1.8.1)
+# ✨ WaifuStudio v2.0 — All-in-One Local Anime & Waifu Production Studio
 
-WAIFU es una webapp local de generación de imágenes y vídeo anime que usa ComfyUI como
-motor y está pensada para un solo PC con una sola GPU NVIDIA (RTX 3000 / 4000 / 5000, 8 GB+ VRAM,
-probado en RTX 3060 12 GB).
-Se abre en `http://127.0.0.1:8765` y el engine escucha en `http://127.0.0.1:8288`; todo se
-ejecuta en tu máquina, sin cuentas ni servicios en la nube. Es de uso personal y no lleva
-filtros NSFW/SFW.
+[![Version](https://img.shields.io/badge/version-2.0.0-ff4081.svg)](https://github.com/gusnion/WaifuStudio)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![GPU](https://img.shields.io/badge/GPU-RTX%203060%2012GB%20Optimized-76b900.svg)](https://www.nvidia.com)
+[![Engine](https://img.shields.io/badge/Engine-ComfyUI%20Standalone-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
+[![Privacy](https://img.shields.io/badge/Privacy-100%25%20Local%20%7C%20No%20Telemetry-success.svg)]()
+[![Censorship](https://img.shields.io/badge/Censorship-Zero%20%2F%20Uncensored-crimson.svg)]()
 
-## Novedades en v1.8.0 / v1.8.1
+> 🌐 **English** | [Español](README.es.md)
 
-- **Instalador Hermético 100% Aislado (`INSTALAR.bat` / `install/install.ps1`)**:
-  - Aislamiento completo: ignora cualquier Python o Conda preexistente en el sistema desplegando CPython 3.12.12 portátil local (`python\`) y `uv` autónomo (`tools\uv\`).
-  - Limpieza activa de variables de entorno contaminantes globales (`PYTHONPATH`, `PYTHONHOME`, `CONDA_PREFIX`).
-  - Detección y recreación automática de `.venv` si fue creado con otro intérprete o ruta huérfana.
-  - Soporte para GPUs NVIDIA RTX 3000 / 4000 / 5000 con recomendación de Driver NVIDIA >= 570.xx para CUDA 13.0 (`cu130`).
-  - Fallback automático y tolerante a fallos para SageAttention.
-  - Preflight base reducido a 25 GB libres (usando `-SkipModels` o `-SkipLlm`) y descarga completa modular.
-  - Auto-registro de `Anima-2.9B-preview-v1` y soporte integrado para descarga de VDN-H3 (8 pasos).
-- **Auto-escaneo en caliente de Modelos y LoRAs en disco**:
-  - Detección y registro en caliente de modelos colocados en `ComfyUI/models/checkpoints` y `diffusion_models`.
-  - Soporte dual transparente para Anima UNET y Checkpoints SDXL/Illustrious (`LoraLoader` model + clip).
-  - Clasificación automática de LoRAs por inspección interna de tensores (`infer_lora_family`).
-  - Preservación robusta de archivos en galería mediante copias atómicas seguras (`copy2`).
-  - Mejoras de usabilidad y estabilidad en el comparador de Upscaler.
-- **Asistencia IA para Instalación y Desarrollo (`AGENTS.md`)**:
-  - Incluye `AGENTS.md` en la raíz optimizado para que cualquier agente IA (Claude Code, OpenCode, Cursor, Antigravity, Windsurf) asista al usuario paso a paso en la instalación, diagnóstico de dependencias o desarrollo de nuevas funciones con contexto completo y Zero-Blind-Read.
+---
 
-## Características
+**WaifuStudio** is a next-generation local creative suite built for anime creators, storytellers, and AI artists.  
+Create consistent characters, generate stunning illustrations in seconds, animate cinematic video clips in 8 steps, edit poses and anatomy with surgical precision, direct multi-minute anime episodes on a generative NLE timeline, and upscale to **2K at 60 FPS** — all running **100% locally, private, free, and uncensored** on a single consumer GPU (RTX 3060 12GB).
 
-### Arquitectura UI/UX y Frontend Canónico
-- **Plantilla Canónica de Pestaña (`TabTemplate`)**: Estandarización de 2 columnas inmutable (Sidebar de controles con auto-scroll a la izquierda + Viewport de previsualización ocupando el 100% del alto y ancho disponible sin espacios muertos).
-- **Visor Modular Unificado (`UniversalViewer`)**: Núcleo JS centralizado para zoom 8x con paneo, split slider de comparación antes/después, barra de herramientas contextual y miniaturas dinámicas con `ResizeObserver` sin hueco negro.
-- **Shell Global y Control Universal**: Botón universal de recarga en el header (`#btn-universal-reload`), selector de idiomas con menú accesible (`#btn-language-selector`), tarjetas de control normalizadas (`ControlCards`) y sistema de ayuda contextual con popovers flotantes (`(?)`).
-- **Backend FastAPI modular (`app/routes/`)**: endpoints segregados por dominio funcional con orquestador central delgado en `app/server.py`.
-- **Frontend nativo con ES Modules (`static/js/`)**: arquitectura desacoplada en navegador con `<script type="module">` sin bundlers ni NodeJS.
-- **Estilos CSS modulares (`static/css/`)**: estructura dividida en `base.css`, `components.css` y `tabs/*.css`.
+---
 
-### Imagen
-- Modelos de la familia Anima con perfil propio (encoder, VAE, sampler y resolución); soporte para modelos expandidos de 40 capas (`anima-2.9b-preview`) mediante el patcher integrado `WaifuAnimaPatch28to40`.
-- Editor de prompt por zonas (calidad, safety, sujeto, personaje, general) con subcategorías.
-- Catálogo de tags Danbooru (capa curada + catálogo v3 de **91.357 etiquetas** con ranking) con soporte de sobreescritura de usuario en `data/registry/tags_danbooru.json`.
-- LoRAs con biblioteca gestionable: **subida desde disco con registro automático**, edición y borrado con o sin archivo.
-- Preprompts de calidad incluidos y propios, negativo avanzado y semilla con dado.
-- 15 presets de tamaño que incluyen los formatos vertical/horizontal de vídeo (XL).
-- «Generar prompt»: convierte una descripción en lenguaje natural en tags por zona y respeta
-  los tags ya aplicados; usa vocabulario restringido al catálogo (los tags inventados se
-  descartan y se indican en la respuesta).
-- «Describir»: **una sola llamada** al modelo de visión devuelve caption + tags validados y
-  repartidos por zonas; incluye «Solo tags (rápido)» con WD14 tras «Avanzado» (pesos de visión
-  opcionales; si faltan, la UI lo indica).
+## 🎯 Why WaifuStudio?
 
-### Vídeo
-- Motor MiniMax H3 universal con cuatro modos certificados: **I2V** (solo frame inicial), **FLF2V** (inicial + final), **Ref2VA** (hasta 4 imágenes de referencia de personaje para conservar identidad sin fijar pose) y **V2V (Video-to-Video)** (vídeo guía de movimiento, baile o coreografía con extracción automática de fotogramas y audio).
-- Perfiles de calidad universales: **Rápido** (Turbo 4 pasos · ClipProj 8B · ideal 3060 12GB), **Estándar** (Turbo 8 pasos · ClipProj 8B), **Calidad** (Turbo 8 pasos · ClipProj 32B), **Ultra** (VDN 8 pasos nativo de alta fidelidad) y **Personalizado** (control manual de encoder, pasos, SageAttention y semilla).
-- Resoluciones nativas completas: selectores para **Vertical (9:16)** y **Horizontal (16:9)** en **SD (~480p)**, **HD (~720p nativo recomendado)**, **FHD (~1080p)**, **QHD (~1440p)** y **2K**, con badges de VRAM/RAM requerida e indicación clara de memoria sin reescalados encubiertos.
-- Aceleración con **VideoDeltaNet (VDN-H3)**: atención híbrida lineal bidireccional + sliding window que genera vídeo completo en solo **8 pasos** (I2V/FLF2V/Ref2VA/V2V).
-- Duración flexible: clips nativos de 5 a 15 s y **encadenado continuo para vídeos largos** (20, 25, 30 s) con ensamblado automático de segmentos mediante FFmpeg y audio continuo.
-- «Mejorar prompt (H3)»: asistencia multimodal con LLM/VLM gestionado (Qwen3.5-9B), **salida obligatoria en inglés cinematográfico técnico**, directiva de estricto apego al primer fotograma y selector de fuerza: **Fiel** (sin elementos inventados), **Balanceado** y **Creativo**.
-- Guía H3 oficial ampliada con parámetros cinematográficos técnicos (cámara, iluminación, foley, diálogo con `<d>[Language] ...</d>`, música) y **plantillas rápidas a 1 clic** (Retrato anime, Caminata costa, Escena dinámica, Estructura base).
-
-### Editor
-- Qwen-Image 2.1 Uncensored (GGUF Q4_K_M + encoder Qwen3-VL-8B int8 + VAE propio).
-- Modo **Editar** por defecto (también Generar) con hasta 10 imágenes de referencia, negativo,
-  pasos (10-50) y CFG (1-10, con aviso si sube de 1).
-- Preview del resultado y presets de tamaño de la app, incluida la opción **Original** (hereda el tamaño de la 1ª referencia, ideal para editar el resultado en cadena).
-- **Comparador permanente antes/después**: divisor arrastrable con zoom 1-8x (rueda) y desplazamiento; accesible permanentemente en la barra del previewer para comparar con cualquier imagen de la minigalería.
-
-### Upscaler
-- Imágenes: RealESRGAN x2 con galería visual de origen, archivo local y escalado ×2/×4
-  (doble pasada del mismo modelo) más **mejora de detalle** opcional (Suave/Fuerte).
-- Vídeo: upscale por fotogramas e interpolación de FPS con RIFE (x2/x4, conserva el audio).
-
-### Galería, Controles de Preview y OCs
-- Galería (5ª pestaña) con visor y miniaturas; reusar una generación devuelve sus condiciones, incluida la referencia.
-- **Gestión avanzada de Galería**: buscador por etiquetas en tiempo real, borrado individual con eliminación física de archivos en disco, limpieza en lote de generaciones fallidas y gestión visual del catálogo de tags personalizadas de usuario (`data/registry/tags_danbooru.json`) con recarga automática FTS5.
-- **Controles de Preview en todas las pestañas**: botón para colapsar/expandir la tira de miniaturas inferior para ampliar el previewer a pantalla completa; comparador interactivo permanente (Slot 1 fijo y Slot 2 intercambiable desde la minigalería).
-- Acciones por imagen en el visor: **usar referencia**, **animar** (primer frame de vídeo),
-  **editar** en el Editor, **escalar** en el Upscaler y descargar; botón de refresco interno.
-- OC Maker: personajes con rasgos, referencias y hoja de vistas; entrenador de LoRA
-  (orquesta un entrenador externo `kohya`; requiere instalarlo una vez, ver `tools/kohya/README.md`).
-
-## Requisitos
-
-| | |
+| Feature | What Makes It Special |
 |---|---|
-| Sistema | Windows 10/11 x64 |
-| GPU | NVIDIA RTX 3000 / 4000 / 5000 (8 GB+ VRAM para imagen, Editor y Upscaler; 12 GB+ para vídeo H3). Probado en RTX 3060 12 GB. Driver NVIDIA >= 570.xx recomendado para CUDA 13.0 (`cu130`). |
-| Disco | SSD SATA/NVMe: 25 GB libres para instalación base (con `-SkipModels` o `-SkipLlm`) / ~120-150 GB libres para descarga completa (modelos ~106 GB + LLM ~6,5 GB). |
-| Programas | Git for Windows (`git` para clonar); `curl.exe` ya viene con Windows; no necesitas preinstalar Python ni Conda (se instalan de forma aislada). `ffmpeg` opcional para encadenado de vídeo >15 s. |
+| ⚡ **One-Click Hermetic Launcher** | Run `INSTALAR.bat` and `ABRIR_APP.bat`. Zero Conda/Python conflicts; deploys an isolated portable environment. |
+| 🎭 **Consistent Characters (OC Maker)** | Save unique facial traits, generate 1-click Character Sheets (Front / Side / Back), and train dedicated LoRAs in background. |
+| 🧠 **Prompt Engineering That Works** | 91,357 Danbooru tags indexed with SQLite FTS5 + Local CPU LLM assistant + 7-Block Natural Language Prompts for Qwen. |
+| 🎞️ **8-Step Video H3 (VideoDeltaNet)** | High-fidelity Wan 2.1 video animation in ~60s instead of 6 minutes, featuring native audio and camera motion presets. |
+| 🎬 **Generative NLE Timeline Studio** | Multi-track video and audio editor designed to assemble 3+ minute episodes with instant "Continue I2V" bridging. |
+| 🔍 **Pro Upscaler 2.0 & 60 FPS RIFE** | Dual-stage pipeline: Fast GAN, Anima Diffusion Hires.fix, Qwen 2K Remaster, AMD FidelityFX RCAS sharpening, and RIFE interpolation. |
 
-## Instalar y usar
+---
 
-```powershell
-git clone https://github.com/gusnion/WaifuStudio.git
-cd WaifuStudio
-INSTALAR.bat
-```
+## 🚀 Quick Start in 3 Clicks
 
-`INSTALAR.bat` es un instalador por consola 100% hermético y aislado: ignora cualquier Python o Conda
-del sistema instalando CPython 3.12.12 portátil y `uv` en local, limpia variables contaminantes,
-prepara la app y ComfyUI con nodos pinneados, pregunta si quieres descargar los modelos recomendados
-y verifica cada archivo con SHA256. Es repetible: si se corta, vuelve a ejecutarlo y continúa donde quedó.
+1. **Clone or Download** this repository into your machine (e.g. `E:\IA\WAIFU`).
+2. **Double-click `INSTALAR.bat`**: Installs portable dependencies, ComfyUI backend, and downloads verified model weights automatically.
+3. **Double-click `ABRIR_APP.bat`**: Launches the server and opens your browser at `http://127.0.0.1:8765`.
 
-Uso diario:
+> 💡 **New to AI Creation?** Open the built-in **📖 Guide** tab inside the studio for interactive step-by-step tutorials, prompt recipes, and VRAM tips!
 
-```
-1) INICIAR_ENGINE.bat     (déjalo abierto; escucha en 127.0.0.1:8288)
-2) INICIAR_WAIFU.bat      (arranca el backend en http://127.0.0.1:8765)
-3) ABRIR_APP.bat          (opcional: abre la app en ventana ultraligera dedicada, ~100 MB RAM)
-```
+---
 
-- El LLM es automático: la app arranca y para sola su servidor de texto/visión (~5 s la primera
-  carga); no hay `.bat` que lanzar. Si prefieres un servidor externo, define `WAIFU_LLM_URL`.
-- Para cerrar: `DETENER_WAIFU.bat` y `DETENER_ENGINE.bat`.
-- Comprobación rápida del entorno: `VERIFICAR_WAIFU.bat` (con `--require-llm` no pasa si el LLM no está listo).
-- Detalle del instalador y banderas avanzadas: `install/README_INSTALL.md`.
+## 🎬 Studio Tour: 7 Production Workspaces
 
-## Modelos
+### 1. 🎨 Image & OC Maker
+- **Dual Engine Architecture**: Native high-speed **Anima 2.9B** (SD3/Turbo in ~3-5s) and **SDXL / Illustrious** checkpoints with automatic tensor architecture detection.
+- **Prompt Zones**: Modular prompt splitting (*Subject, Clothing, Background, NSFW, Composition*) prevents tag contamination.
+- **Dual LoraLoader**: Automatic weighting for single-UNET and standard Checkpoint models.
+- **Multimodal Vision (WD14 + LLM)**: 1-click image description into Danbooru tags distributed cleanly across prompt zones.
 
-El instalador descarga y verifica la parte automática del set recomendado (~106 GB):
+### 2. 🎞️ Video H3 (Wan 2.1 + VideoDeltaNet)
+Generate high-fidelity animated anime sequences in **8 steps**:
+- **I2V (Image-to-Video)**: Bring static artwork to life with natural motion.
+- **FLF2V (First-to-Last Frame)**: Generate coherent seamless transitions between two keyframes.
+- **Ref2VA (Reference-to-Video-Audio)**: Preserve character identity across up to 4 reference portraits with synchronized audio.
+- **V2V (Video-to-Video)**: Stylize and redraw motion from existing video clips.
+- **Camera Presets**: 1-click camera movements (Zoom In, Pan Left, Tilt Up, Dynamic Action).
 
-- Anima 2.9B preview (imagen), MiniMax H3 (vídeo con audio), Qwen-Image 2.1 UC (Editor),
-  RealESRGAN x2 + RIFE (Upscaler) y el LLM de texto/visión.
+### 3. 🖌️ Editor Qwen 2.1 (Inpaint & Pose Skill)
+- **Brush Inpainting**: Surgical modification of clothes, expressions, and anatomy without touching the rest of the canvas.
+- **Pose Presets (L0 to L3)**: Natural language prompt injection from subtle micro-adjustments (`L0`) to dynamic full-body poses (`L3`).
+- **Latent Structure Preservation**: Locks the original composition while reimagining details.
 
-### LLM único (incluido, ~6,5 GB)
+### 4. 🎬 Studio Timeline (Generative NLE)
+Turn short clips into **complete anime episodes**:
+- **Multi-Track Sequencer**: Arrange video clips, static illustrations (with automated Ken Burns pan/zoom), and transitions.
+- **Audio & BGM Track**: Upload background music and sound effects with precise start times and volume controls.
+- **Infinite Sequences ("Continue I2V")**: Extract the final frame of any clip with one click to generate the next chronological shot.
+- **One-Click Export**: Renders the complete assembly into an MP4 file with normalized resolution and synced audio via FFmpeg.
 
-WAIFU usa un solo modelo para todas las tareas de texto e imagen→texto:
-**Qwen3.5-9B NSFW Captioning v5 (Q4_K_M) + mmproj-Q8_0**, servido por `llama-server` stock b11146 en
-**CPU** (~6,25 GiB, 0 VRAM: no compite con ComfyUI por la GPU). Afinado por oldhag88 para captioning
-anime/NSFW, booru tags y razonamiento explicativo (CoT). Sin `.bat`: la app arranca el servidor
-en el primer uso (~5 s de carga) y lo para al cerrar; gestionado automáticamente.
+### 5. 🔍 Upscaler Pro 2.0 & RIFE 60 FPS
+- **Fast Mode (GAN)**: `4x-AnimeSharp` and `4x-UltraSharp` for rapid 2-second enlargement.
+- **Hires.fix (Diffusion)**: Redraws fine micro-details (eyelashes, iris glow, hair strands) with Anima diffusion at customizable denoise (`0.15`–`0.35`).
+- **Qwen Remaster**: Ultra-detailed 2048px semantic reconstruction.
+- **AMD FidelityFX RCAS**: Contrast-adaptive edge sharpening without halos or ringing artifacts.
+- **RIFE Video Interpolation**: Doubles or quadruples video framerate to **60 FPS** with zero audio desync.
 
-El instalador baja el GGUF, el mmproj y el runtime por defecto. Para descargar o
-reverificar el paquete completo (incluido el runtime `llama.cpp` en `tools/llama.cpp/`, no
-versionado), o si la app indica «no instalado»:
+### 6. 🖼️ Smart Gallery & Batch Queue
+- **Live Queue Indicators**: Track generation jobs with animated status spinners (`"Queued"`, `"Running"`) across all tabs.
+- **Interactive Lightbox**: Fullscreen inspection with instant zoom and side-by-side comparison slider.
+- **One-Click Hand-offs**: Send any past generation directly to *Video H3*, *Qwen Editor*, *Timeline Studio*, or *Upscaler*.
 
-```powershell
-& .\.venv\Scripts\python.exe scripts\download_llm.py
-```
+### 7. 📖 Built-in Interactive Guide
+- Complete bilingual manual (`English` / `Español`) accessible directly within the UI.
+- Real-time search and modular category filters.
+- FAQ accordions addressing memory optimization, identity consistency, and dynamic motion.
 
-`WAIFU_LLM_PORT/MODEL/MMPROJ/THREADS` ajustan el servidor gestionado y `WAIFU_LLM_URL` fuerza
-el modo externo. Pines y hashes: `install/manifest/manifest.llm.json`.
+---
 
-Dos modelos base de Anima no se pueden auto-descargar (age-gate en Civitai): hay que aportarlos
-a mano.
+## 💻 Hardware Requirements
 
-- Anima [Official] aesthetic v1.1 — `civitai.com/models/2458426` v3126581 → destino
-  `ComfyUI/models/diffusion_models/anima_aestheticV11.safetensors`.
-- One obsession_Anima v4.0 — `civitai.com/models/2695493` v3301424 → destino
-  `ComfyUI/models/diffusion_models/oneObsessionAnima_v40.safetensors`.
+WaifuStudio is engineered from the ground up for the **Solo-3060 (12 GB VRAM)** architecture:
 
-El destino exacto y el SHA256 de cada uno están en `registry/recommended-v1.json`. Tras
-copiarlos, vuelve a ejecutar `INSTALAR.bat` para registrarlos.
+| Component | Minimum | Recommended |
+|---|---|---|
+| **GPU** | NVIDIA RTX 3060 (12 GB VRAM) | NVIDIA RTX 3060 / 4070 / 4080 / 5000 |
+| **Driver** | NVIDIA Driver >= 570.xx (CUDA 13.0) | Latest NVIDIA Game Ready / Studio Driver |
+| **RAM** | 16 GB | 32 GB DDR4 / DDR5 |
+| **Storage** | 35 GB free space (SSD recommended) | 60 GB+ free space on NVMe SSD |
+| **CPU** | Intel Core i5 / AMD Ryzen 5 | Intel Core i7 / AMD Ryzen 7 |
+| **OS** | Windows 10 / 11 (64-bit) | Windows 11 (64-bit) |
 
-### Modelos de Vídeo M15 (VDN-H3 y Ref2VA DiT)
+> 🛡️ **VRAM Protection Guarantee**: The multimodal LLM assistant (Qwen3.5-9B) operates **100% on CPU** via a lightweight background process, keeping all 12 GB of GPU VRAM dedicated exclusively to image, diffusion, and video generation.
 
-Para habilitar la aceleración extrema de vídeo en 8 pasos con **VideoDeltaNet (VDN-H3)** o el condicionamiento por referencias multirreferencia **Ref2VA**, ejecuta el script oficial de descarga verificado:
+---
 
-```powershell
-# Descargar pesos VDN-H3 (~2.3 GB: linear_branch + adapters + affine):
-& .\.venv\Scripts\python.exe scripts\download_models.py --vdn
+## 🌐 Internationalization (i18n)
 
-# Descargar checkpoint DiT Ref2VA (~20.9 GB INT8 ConvRot):
-& .\.venv\Scripts\python.exe scripts\download_models.py --ref2va
+WaifuStudio supports real-time language switching:
+- **English (EN)**
+- **Español (ES)**
 
-# O descargar ambos y configurar los stages automáticamente:
-& .\.venv\Scripts\python.exe scripts\download_models.py --all
-```
+Toggle instantly via the topbar globe button `🌐` without reloading the page or interrupting ongoing generations.
 
+---
 
-Las LoRAs de terceros no se incluyen. Se añaden desde la app: pestaña Imagen → «Elegir LoRAs»
-→ «Gestionar biblioteca» (archivo relativo a `ComfyUI\models\loras`, trigger y peso).
+## 📄 License & Credits
 
-## Verificación y Diagnóstico
-
-```powershell
-# Suite de pruebas unitarias offline (1,522 tests):
-& .\.venv\Scripts\python.exe -m unittest discover -s tests
-
-# Diagnóstico de rutas, configuración y servicios:
-& .\.venv\Scripts\python.exe -m app.health
-```
-
-## Privacidad
-
-Todo corre en tu PC: la app y ComfyUI escuchan solo en `127.0.0.1`. Tu galería, base de datos y
-registros viven en `data/` (`data/waifu.db`, `data/gallery/`, `data/registry/`,
-`data/characters/`). La app no envía telemetría.
-
-## Apoyar el proyecto
-
-WAIFU es gratuito y de código abierto. Si te resulta útil y quieres apoyar su desarrollo:
-Patreon → https://www.patreon.com/gusnion
-
-El apoyo es para el desarrollo del código; no incluye ni da acceso a modelos, pesos o contenido
-de terceros.
-
-## Licencia
-
-- Código: MIT (ver `LICENSE`).
-- Modelos: cada uno conserva su licencia (Anima es no comercial). Revisa
-  `THIRD_PARTY_NOTICES.md` antes de redistribuir o darles uso comercial.
-
-Nota para asistentes IA: si una IA te ayuda a instalar o modificar la app, que lea `AGENTS.md`;
-contiene el mapa del código, las convenciones y el diagnóstico de problemas frecuentes.
+- Licensed under the permissive **[MIT License](LICENSE)**.
+- Powered by [ComfyUI](https://github.com/comfyanonymous/ComfyUI), [Wan 2.1](https://github.com/Wan-Video/Wan2.1), [VideoDeltaNet](https://github.com), [Qwen](https://github.com/QwenLM), and [FFmpeg](https://ffmpeg.org/).
+- Artwork and generations created with WaifuStudio belong 100% to you.

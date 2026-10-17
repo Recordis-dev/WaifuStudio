@@ -670,5 +670,237 @@ class InheritSizeTests(unittest.TestCase):
             inherit_size_from_image(b"no-es-una-imagen")
 
 
+class QwenPoseAndPresetTests(unittest.TestCase):
+    def test_presets_existentes_y_completos(self):
+        from app.editor import QWEN_POSE_PRESETS
+
+        self.assertEqual(len(QWEN_POSE_PRESETS), 4)
+        for key in ("l0_editorial", "l1_open", "l2_bold_nsfw", "l3_extreme"):
+            self.assertIn(key, QWEN_POSE_PRESETS)
+            preset = QWEN_POSE_PRESETS[key]
+            self.assertEqual(preset["id"], key)
+            self.assertTrue(preset["label"])
+            self.assertTrue(preset["level"])
+            self.assertTrue(len(preset["template"]) > 20)
+
+    def test_format_qwen_7block_prompt(self):
+        from app.editor import QWEN_POSE_PRESETS, format_qwen_7block_prompt
+
+        self.assertEqual(format_qwen_7block_prompt("cat", None), "cat")
+        self.assertEqual(format_qwen_7block_prompt("cat", "inexistente"), "cat")
+        formatted = format_qwen_7block_prompt("cat", "l0_editorial")
+        self.assertTrue(formatted.startswith("cat, "))
+        self.assertIn("editorial posture", formatted)
+
+        # Empty prompt returns template
+        self.assertEqual(
+            format_qwen_7block_prompt("", "l0_editorial"),
+            QWEN_POSE_PRESETS["l0_editorial"]["template"],
+        )
+
+        # Template already in prompt is not duplicated
+        tpl = QWEN_POSE_PRESETS["l0_editorial"]["template"]
+        self.assertEqual(
+            format_qwen_7block_prompt(f"1girl, {tpl}", "l0_editorial"),
+            f"1girl, {tpl}",
+        )
+
+
+class EditorGraphFeaturesTests(unittest.TestCase):
+    def setUp(self):
+        self.template = load_graph(EDITOR_TEMPLATE_PATH)
+
+    def test_validaciones_sampler_y_scheduler(self):
+        with self.assertRaises(EngineError):
+            prepare_editor_graph(
+                self.template, prompt="test", sampler_name="invalid_sampler"
+            )
+        with self.assertRaises(EngineError):
+            prepare_editor_graph(
+                self.template, prompt="test", scheduler="invalid_scheduler"
+            )
+
+    def test_sampler_y_scheduler_configurados(self):
+        graph = prepare_editor_graph(
+            self.template,
+            prompt="test",
+            sampler_name="er_sde",
+            scheduler="beta",
+        )
+        sampler = graph[SAMPLER_ID]["inputs"]
+        self.assertEqual(sampler["sampler_name"], "er_sde")
+        self.assertEqual(sampler["scheduler"], "beta")
+
+    def test_preserve_structure_con_refs(self):
+        graph = prepare_editor_graph(
+            self.template,
+            prompt="test",
+            ref_images=["input.png"],
+            preserve_structure=True,
+        )
+        sampler = graph[SAMPLER_ID]["inputs"]
+        self.assertEqual(sampler["latent_image"], [ENCODE_ID, 2])
+
+    def test_preserve_structure_sin_refs_conserva_empty_latent(self):
+        graph = prepare_editor_graph(
+            self.template,
+            prompt="test",
+            ref_images=[],
+            preserve_structure=True,
+        )
+        sampler = graph[SAMPLER_ID]["inputs"]
+        self.assertEqual(sampler["latent_image"], [LATENT_ID, 0])
+
+    def test_loras_encadenados(self):
+        loras = [
+            {"file": "lora_a.safetensors", "weight": 0.8},
+            {"file": "lora_b.safetensors", "weight": 0.5},
+        ]
+        graph = prepare_editor_graph(
+            self.template,
+            prompt="test",
+            loras=loras,
+        )
+        self.assertIn("lora_1", graph)
+        self.assertIn("lora_2", graph)
+        self.assertEqual(graph["lora_1"]["class_type"], "LoraLoaderModelOnly")
+        self.assertEqual(graph["lora_1"]["inputs"]["model"], ["1", 0])
+        self.assertEqual(graph["lora_1"]["inputs"]["lora_name"], "lora_a.safetensors")
+        self.assertEqual(graph["lora_1"]["inputs"]["strength_model"], 0.8)
+
+        self.assertEqual(graph["lora_2"]["inputs"]["model"], ["lora_1", 0])
+        self.assertEqual(graph["lora_2"]["inputs"]["lora_name"], "lora_b.safetensors")
+        self.assertEqual(graph["lora_2"]["inputs"]["strength_model"], 0.5)
+
+        # Cache node must consume lora_2
+        self.assertEqual(graph[CACHE_ID]["inputs"]["model"], ["lora_2", 0])
+
+    def test_loras_invalidos_lanzan_engine_error(self):
+        with self.assertRaises(EngineError):
+            prepare_editor_graph(self.template, prompt="test", loras="no-lista")
+        with self.assertRaises(EngineError):
+            prepare_editor_graph(
+                self.template, prompt="test", loras=[{"sin_archivo": True}]
+            )
+
+
+class EditorRouteFeaturesTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.config = make_config(self.root)
+        self.store = Store(self.config.data_dir / "waifu.db")
+        self.store.init()
+        self.registry = ModelRegistry.load(
+            Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "models.json"
+        )
+        server_module._JOBS.clear()
+        self.addCleanup(server_module._JOBS.clear)
+
+    def install_model(self) -> None:
+        for relative in server_module.EDITOR_MODEL_FILES:
+            path = self.config.comfy_root / "models" / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"fake-model")
+
+    def test_api_editor_pose_presets(self):
+        app = create_app(
+            config=self.config,
+            store=self.store,
+            registry=self.registry,
+            queue=JobQueue(lambda j: None),
+        )
+        with TestClient(app) as client:
+            res = client.get("/api/editor/pose_presets")
+            self.assertEqual(res.status_code, 200)
+            data = res.json()
+            self.assertIn("presets", data)
+            self.assertEqual(len(data["presets"]), 4)
+
+    def test_api_editor_generate_con_nuevos_campos(self):
+        self.install_model()
+        app = create_app(
+            config=self.config,
+            store=self.store,
+            registry=self.registry,
+            queue=JobQueue(lambda j: None),
+        )
+        with TestClient(app) as client:
+            res = client.post(
+                "/api/editor/generate",
+                json={
+                    "prompt": "waifu portrait",
+                    "pose_preset": "l2_bold_nsfw",
+                    "sampler_name": "er_sde",
+                    "scheduler": "beta",
+                    "preserve_structure": True,
+                    "loras": [{"file": "test.safetensors", "weight": 0.7}],
+                },
+            )
+            self.assertEqual(res.status_code, 200)
+            job_id = res.json()["job_id"]
+            job = app.state.jobs[job_id]
+            self.assertEqual(job["sampler_name"], "er_sde")
+            self.assertEqual(job["scheduler"], "beta")
+            self.assertTrue(job["preserve_structure"])
+            self.assertEqual(job["pose_preset"], "l2_bold_nsfw")
+            self.assertEqual(len(job["loras"]), 1)
+
+    def test_api_editor_generate_preset_valido_con_prompt_vacio(self):
+        self.install_model()
+        app = create_app(
+            config=self.config,
+            store=self.store,
+            registry=self.registry,
+            queue=JobQueue(lambda j: None),
+        )
+        with TestClient(app) as client:
+            res = client.post(
+                "/api/editor/generate",
+                json={
+                    "prompt": "",
+                    "pose_preset": "l1_open",
+                },
+            )
+            self.assertEqual(res.status_code, 200)
+            job_id = res.json()["job_id"]
+            job = app.state.jobs[job_id]
+            self.assertTrue("glamour shot" in job["prompt"].lower())
+
+    def test_api_editor_generate_validaciones_error(self):
+        self.install_model()
+        app = create_app(
+            config=self.config,
+            store=self.store,
+            registry=self.registry,
+            queue=JobQueue(lambda j: None),
+        )
+        with TestClient(app) as client:
+            res = client.post(
+                "/api/editor/generate",
+                json={"prompt": "test", "sampler_name": "invalido"},
+            )
+            self.assertEqual(res.status_code, 400)
+
+            res = client.post(
+                "/api/editor/generate",
+                json={"prompt": "test", "scheduler": "invalido"},
+            )
+            self.assertEqual(res.status_code, 400)
+
+            res = client.post(
+                "/api/editor/generate",
+                json={"prompt": "test", "pose_preset": "invalido"},
+            )
+            self.assertEqual(res.status_code, 400)
+
+            res = client.post(
+                "/api/editor/generate",
+                json={"prompt": "test", "loras": "no-lista"},
+            )
+            self.assertEqual(res.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -4579,7 +4579,7 @@ class UpscaleRouteTests(ServerTestCase):
         data = response.json()
         self.assertEqual(data["models"], data["items"])
         self.assertEqual(data["kinds"], ["image", "video", "fps"])
-        self.assertEqual([item["id"] for item in data["items"]], [self.MODEL])
+        self.assertIn(self.MODEL, [item["id"] for item in data["items"]])
         entry = data["items"][0]
         for field in ("id", "label", "file", "scale", "note"):
             self.assertIn(field, entry)
@@ -4847,11 +4847,11 @@ class UpscaleRouteTests(ServerTestCase):
         self.assertEqual(queue.jobs, [])
         self.assertFalse((self.config.comfy_root / "input").exists())
 
-    def test_sharpen_con_video_400(self):
+    def test_sharpen_con_video_permite_1_y_2_rechaza_invalidos(self):
         queue = RecordingQueue()
         gen_id = self.make_source(kind="video", outputs=("clip.mp4",))
         client = self.make_client(queue=queue)
-        for sharpen in (1, 2, "x", True, 25.5):
+        for sharpen in ("x", True, 25.5):
             with self.subTest(sharpen=sharpen):
                 response = client.post(
                     "/api/upscale",
@@ -4864,7 +4864,19 @@ class UpscaleRouteTests(ServerTestCase):
                 )
                 self.assertEqual(response.status_code, 400)
                 self.assertIn("sharpen", response.json()["error"])
-        self.assertEqual(queue.jobs, [])
+        for sharpen in (1, 2):
+            with self.subTest(sharpen=sharpen):
+                response = client.post(
+                    "/api/upscale",
+                    json={
+                        "kind": "video",
+                        "source_gen": gen_id,
+                        "model": self.MODEL,
+                        "sharpen": sharpen,
+                    },
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(queue.jobs[-1]["sharpen"], sharpen)
         response = client.post(
             "/api/upscale",
             json={

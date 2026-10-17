@@ -552,7 +552,8 @@ async function generateVideo() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = state.activeJobsCount > 0 ? `Encolar (${state.activeJobsCount})` : "Generar";
+      const isEn = (localStorage.getItem("waifu_lang") || "es").toLowerCase() === "en";
+      btn.textContent = state.activeJobsCount > 0 ? (isEn ? `Queue (${state.activeJobsCount})` : `Encolar (${state.activeJobsCount})`) : (isEn ? "Generate" : "Generar");
     }
   }
 }
@@ -623,7 +624,8 @@ function initVideoTab() {
   window.addEventListener("waifu:queue-updated", () => {
     const btn = $("btn-video-generate");
     if (btn) {
-      btn.textContent = state.activeJobsCount > 0 ? `Encolar (${state.activeJobsCount})` : "Generar";
+      const isEn = (localStorage.getItem("waifu_lang") || "es").toLowerCase() === "en";
+      btn.textContent = state.activeJobsCount > 0 ? (isEn ? `Queue (${state.activeJobsCount})` : `Encolar (${state.activeJobsCount})`) : (isEn ? "Generate" : "Generar");
     }
   });
   on("video-engine", "change", applyVideoEngine);

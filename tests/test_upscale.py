@@ -89,13 +89,21 @@ def _entry(**overrides) -> dict:
     return entry
 
 
+EXPECTED_IDS = [
+    "real-esrgan-x2",
+    "anime-sharp-x4",
+    "ultrasharp-x4",
+    "animejanai-x2",
+]
+
+
 class UpscalerCatalogTests(unittest.TestCase):
     def test_path_y_json_del_catalogo(self):
         self.assertEqual(UPSCALERS_PATH, APP_ROOT / "registry" / "upscalers-v1.json")
         self.assertTrue(UPSCALERS_PATH.is_file())
         data = json.loads(UPSCALERS_PATH.read_text(encoding="utf-8"))
         self.assertEqual(data["version"], CATALOG_VERSION)
-        self.assertEqual([entry["id"] for entry in data["upscalers"]], [EXPECTED_ID])
+        self.assertEqual([entry["id"] for entry in data["upscalers"]], EXPECTED_IDS)
 
     def test_entrada_real_esrgan_x2(self):
         entry = upscalers()[EXPECTED_ID]
@@ -107,7 +115,7 @@ class UpscalerCatalogTests(unittest.TestCase):
 
     def test_list_en_orden_y_copia_profunda(self):
         listed = list_upscalers()
-        self.assertEqual([item["id"] for item in listed], [EXPECTED_ID])
+        self.assertEqual([item["id"] for item in listed], EXPECTED_IDS)
         listed[0]["scale"] = 99
         self.assertEqual(upscalers()[EXPECTED_ID]["scale"], 2)
 

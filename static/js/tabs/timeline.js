@@ -1,0 +1,422 @@
+// WaifuStudio — Pestaña Estudio / Timeline (M20 T-03b)
+// Qué hace: NLE secuencial, preview continua, audio multi-pista y generación IA integrada.
+// Dependencias: static/js/api.js y static/js/dom.js.
+
+import { api, postJson, enqueueJobs } from "../api.js";
+import { $, on } from "../dom.js";
+
+const state = {
+  projects: [],
+  current: { id: null, name: "Mi Secuencia", data: { clips: [], audio_tracks: [], width: 1280, height: 720, fps: 24 } },
+  selectedIndex: 0,
+  isPlayingAll: false,
+  playIndex: 0,
+  aiGenerating: false,
+};
+let previewAudioEl = null;
+
+function setTimelineStatus(msg, err = false) {
+  const el = $("timeline-status");
+  if (el) { el.textContent = msg; el.style.color = err ? "#ff5252" : "#aaa"; }
+}
+
+function setAiStatus(msg, err = false) {
+  const el = $("timeline-ai-status");
+  if (el) { el.textContent = msg; el.style.color = err ? "#ff5252" : "var(--accent, #ff4081)"; }
+}
+
+function calcTotalDuration() {
+  const clips = state.current.data.clips || [];
+  const total = clips.reduce((acc, c) => acc + (Number(c.duration) || 3.0), 0);
+  const durEl = $("timeline-total-duration");
+  if (durEl) durEl.textContent = `Duración total: ${total.toFixed(1)}s (${clips.length} clips)`;
+  const cntEl = $("timeline-track-count");
+  if (cntEl) cntEl.textContent = `${clips.length} clips`;
+}
+
+function resolveMediaUrl(item) {
+  if (!item) return "";
+  if (item.url) return item.url;
+  const out = (item.outputs || [])[0];
+  const name = typeof out === "string" ? out : out && out.name;
+  return name && item.id ? `/media/${item.id}/${name}` : "";
+}
+
+function selectClip(index) {
+  const clips = state.current.data.clips;
+  if (index < 0 || index >= clips.length) return;
+  state.selectedIndex = index;
+  renderTracks();
+  const clip = clips[index];
+  const video = $("timeline-preview-video");
+  if (video && clip) { video.src = clip.url; video.muted = Boolean(clip.mute); video.currentTime = 0; }
+}
+
+function stopSequencePlayback() {
+  state.isPlayingAll = false;
+  const btn = $("btn-timeline-play-all");
+  if (btn) btn.textContent = "▶ Reproducir Secuencia";
+  if (previewAudioEl) { previewAudioEl.pause(); previewAudioEl = null; }
+}
+
+function playNextInSequence() {
+  const clips = state.current.data.clips;
+  if (!state.isPlayingAll || state.playIndex >= clips.length) { stopSequencePlayback(); return; }
+  const clip = clips[state.playIndex];
+  state.selectedIndex = state.playIndex;
+  renderTracks();
+  const video = $("timeline-preview-video");
+  if (!video) return;
+  video.src = clip.url;
+  video.muted = Boolean(clip.mute);
+  video.currentTime = 0;
+  video.play().catch(() => {});
+  if (clip.kind === "image") {
+    setTimeout(() => { if (state.isPlayingAll) { state.playIndex++; playNextInSequence(); } }, (Number(clip.duration) || 3.0) * 1000);
+  }
+}
+
+function togglePlayAll() {
+  const clips = state.current.data.clips;
+  if (!clips.length) return;
+  if (state.isPlayingAll) {
+    stopSequencePlayback();
+    const video = $("timeline-preview-video");
+    if (video) video.pause();
+    return;
+  }
+  state.isPlayingAll = true;
+  state.playIndex = 0;
+  const btn = $("btn-timeline-play-all");
+  if (btn) btn.textContent = "⏸️ Pausar";
+  const audioTrack = (state.current.data.audio_tracks || [])[0];
+  if (audioTrack && audioTrack.url) {
+    previewAudioEl = new Audio(audioTrack.url);
+    previewAudioEl.volume = Number(audioTrack.volume) || 1.0;
+    previewAudioEl.play().catch(() => {});
+  }
+  playNextInSequence();
+}
+
+function renderTracks() {
+  const container = $("timeline-track-video");
+  if (!container) return;
+  container.replaceChildren();
+  const clips = state.current.data.clips || [];
+  if (!clips.length && !state.aiGenerating) {
+    container.innerHTML = `<div id="timeline-empty-hint" style="color:#777; font-size:12px; margin:auto;">Añade clips desde la Biblioteca o genera con IA para empezar.</div>`;
+    calcTotalDuration(); renderAudioTrack(); return;
+  }
+  clips.forEach((clip, idx) => {
+    const card = document.createElement("div");
+    card.className = `timeline-clip-card${idx === state.selectedIndex ? " active" : ""}`;
+    card.dataset.idx = String(idx);
+    const mediaHtml = clip.kind === "video" ? `<video src="${clip.url}" preload="metadata"></video>` : `<img src="${clip.url}">`;
+    card.innerHTML = `
+      <div class="timeline-clip-thumb-wrap" data-action="select">${mediaHtml}<span class="timeline-clip-badge">#${idx + 1} ${clip.kind === "video" ? "🎬" : "🖼️"}</span></div>
+      <div class="timeline-clip-meta"><span>Dur:</span><input type="number" min="0.5" max="60" step="0.5" value="${clip.duration || (clip.kind === "video" ? 5.0 : 3.0)}" class="clip-dur"><button type="button" class="timeline-btn-mini" data-action="mute">${clip.mute ? "🔇" : "🔊"}</button></div>
+      <select class="timeline-btn-mini clip-fx" style="width:100%;"><option value="none"${clip.effect === "none" && clip.transition_in !== "fade" ? " selected" : ""}>FX: Ninguno</option><option value="fade"${clip.transition_in === "fade" ? " selected" : ""}>Transición Fade</option><option value="zoom_in"${clip.effect === "zoom_in" ? " selected" : ""}>Zoom In</option><option value="zoom_out"${clip.effect === "zoom_out" ? " selected" : ""}>Zoom Out</option></select>
+      <div class="timeline-clip-actions"><button type="button" class="timeline-btn-mini" data-action="i2v" title="Continuar con I2V">⏭️ I2V</button><button type="button" class="timeline-btn-mini" data-action="left"${idx === 0 ? " disabled" : ""}>◀</button><button type="button" class="timeline-btn-mini" data-action="right"${idx === clips.length - 1 ? " disabled" : ""}>▶</button><button type="button" class="timeline-btn-mini" data-action="del" title="Eliminar">✕</button></div>`;
+    container.appendChild(card);
+  });
+  if (state.aiGenerating) {
+    const ph = document.createElement("div");
+    ph.className = "timeline-clip-placeholder";
+    ph.innerHTML = `<span class="queue-spinner" style="width:20px;height:20px;border-width:2px;"></span><span>Generando con IA...</span>`;
+    container.appendChild(ph);
+  }
+  calcTotalDuration(); renderAudioTrack();
+}
+
+function handleTrackClick(e) {
+  const card = e.target.closest(".timeline-clip-card");
+  if (!card) return;
+  const idx = Number(card.dataset.idx);
+  const clips = state.current.data.clips;
+  const action = e.target.dataset.action || (e.target.closest("[data-action]") && e.target.closest("[data-action]").dataset.action);
+  if (action === "select") selectClip(idx);
+  else if (action === "mute") {
+    clips[idx].mute = !clips[idx].mute; e.target.textContent = clips[idx].mute ? "🔇" : "🔊";
+    if (idx === state.selectedIndex) { const pv = $("timeline-preview-video"); if (pv) pv.muted = clips[idx].mute; }
+  } else if (action === "i2v") triggerAiAction("continue_i2v", idx);
+  else if (action === "left" && idx > 0) { [clips[idx - 1], clips[idx]] = [clips[idx], clips[idx - 1]]; selectClip(idx - 1); }
+  else if (action === "right" && idx < clips.length - 1) { [clips[idx + 1], clips[idx]] = [clips[idx], clips[idx + 1]]; selectClip(idx + 1); }
+  else if (action === "del") { clips.splice(idx, 1); state.selectedIndex = Math.max(0, idx - 1); renderTracks(); calcTotalDuration(); }
+}
+
+function handleTrackChange(e) {
+  const card = e.target.closest(".timeline-clip-card");
+  if (!card) return;
+  const clip = state.current.data.clips[Number(card.dataset.idx)];
+  if (!clip) return;
+  if (e.target.classList.contains("clip-dur")) { clip.duration = Math.max(0.5, Number(e.target.value) || 3.0); calcTotalDuration(); }
+  else if (e.target.classList.contains("clip-fx")) {
+    const val = e.target.value;
+    clip.transition_in = val === "fade" ? "fade" : "none"; clip.transition_out = val === "fade" ? "fade" : "none"; clip.effect = val === "fade" ? "none" : val;
+  }
+}
+
+function renderAudioTrack() {
+  const container = $("timeline-track-audio");
+  if (!container) return;
+  container.replaceChildren();
+  const tracks = state.current.data.audio_tracks || [];
+  if (!tracks.length) {
+    container.innerHTML = `<div id="timeline-audio-empty-hint" style="color:#666; font-size:11px; margin:auto;">Sin pista de audio externa (opcional).</div>`;
+    return;
+  }
+  tracks.forEach((t, i) => {
+    const card = document.createElement("div");
+    card.className = "timeline-audio-card";
+    const name = (t.source_path || "").split(/[\\/]/).pop() || `Audio #${i + 1}`;
+    card.innerHTML = `
+      <div style="display:flex; justify-content:space-between; font-weight:600;"><span class="timeline-audio-title"></span><button type="button" class="timeline-btn-mini" data-del-audio="${i}">✕</button></div>
+      <div style="display:flex; justify-content:space-between; align-items:center;"><span>Inicio: <input type="number" min="0" step="0.5" value="${t.start_time || 0}" data-field="start" data-idx="${i}" style="width:42px;">s</span><span>Vol: <input type="number" min="0" max="2" step="0.1" value="${t.volume || 1.0}" data-field="vol" data-idx="${i}" style="width:38px;"></span></div>`;
+    const titleSpan = card.querySelector(".timeline-audio-title");
+    if (titleSpan) titleSpan.textContent = `🎵 ${name}`;
+    container.appendChild(card);
+  });
+}
+
+export async function refreshTimelineMedia() {
+  const shelf = $("timeline-media-shelf");
+  if (!shelf) return;
+  shelf.replaceChildren();
+  const filter = ($("timeline-media-filter") && $("timeline-media-filter").value) || "";
+  try {
+    const data = await api(`/api/gallery?limit=36${filter ? `&kind=${filter}` : ""}`);
+    for (const item of (data.items || [])) {
+      const isVideo = item.kind === "video";
+      const url = resolveMediaUrl(item);
+      if (!url) continue;
+      const div = document.createElement("div");
+      div.className = "timeline-media-item";
+      div.title = `#${item.id} · ${item.prompt || ""}`;
+      div.innerHTML = `${isVideo ? `<video src="${url}" preload="metadata"></video>` : `<img src="${url}" loading="lazy">`}<button type="button" class="timeline-media-add-btn">+</button>`;
+      div.querySelector(".timeline-media-add-btn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        state.current.data.clips.push({
+          generation_id: item.id, kind: isVideo ? "video" : "image", url, source_path: url,
+          duration: isVideo ? 5.0 : 3.0, mute: false, effect: "none", transition_in: "none", transition_out: "none",
+        });
+        selectClip(state.current.data.clips.length - 1);
+      });
+      shelf.appendChild(div);
+    }
+  } catch (err) { setTimelineStatus(`Error en medios: ${err.message}`, true); }
+}
+
+async function loadTimelineProjects() {
+  try {
+    const res = await api("/api/timeline/projects");
+    state.projects = res.items || [];
+    const select = $("timeline-project-select");
+    if (!select) return;
+    const prev = select.value;
+    select.replaceChildren();
+    const defOpt = document.createElement("option");
+    defOpt.value = ""; defOpt.textContent = "(Nuevo proyecto)";
+    select.appendChild(defOpt);
+    for (const p of state.projects) {
+      const opt = document.createElement("option");
+      opt.value = p.id; opt.textContent = `${p.name} (${(p.data.clips || []).length} clips)`;
+      select.appendChild(opt);
+    }
+    if (prev && state.projects.some((p) => p.id === prev)) select.value = prev;
+  } catch (err) { setTimelineStatus(err.message, true); }
+}
+
+async function saveCurrentProject() {
+  const name = ($("timeline-project-name") && $("timeline-project-name").value.trim()) || "Mi Secuencia";
+  setTimelineStatus("Guardando proyecto...");
+  try {
+    const saved = await postJson("/api/timeline/projects", { id: state.current.id, name, data: state.current.data });
+    state.current.id = saved.id; state.current.name = saved.name;
+    setTimelineStatus("¡Proyecto guardado!");
+    await loadTimelineProjects();
+    const select = $("timeline-project-select");
+    if (select) select.value = saved.id;
+  } catch (err) { setTimelineStatus(err.message, true); }
+}
+
+async function exportTimeline() {
+  if (!state.current.data.clips.length) { setTimelineStatus("La pista está vacía; añade clips antes de exportar.", true); return; }
+  const btn = $("btn-timeline-export");
+  if (btn) btn.disabled = true;
+  setTimelineStatus("Renderizando secuencia con FFmpeg...");
+  try {
+    const res = await postJson("/api/timeline/export", { project_data: state.current.data, name: state.current.name || "Exportación Timeline" });
+    setTimelineStatus(`¡Vídeo exportado con éxito! (#${res.generation_id})`);
+    const video = $("timeline-preview-video");
+    if (video && res.output_url) { video.src = res.output_url; video.play().catch(() => {}); }
+  } catch (err) { setTimelineStatus(`Error en exportación: ${err.message}`, true); }
+  finally { if (btn) btn.disabled = false; }
+}
+
+async function enqueueClipJob(jobId, kind, dur, insertIdx, msg) {
+  await enqueueJobs(jobId, {
+    statusFn: setAiStatus,
+    onDone: (job) => {
+      state.aiGenerating = false;
+      const outName = (job.outputs && job.outputs[0]) || "";
+      const newUrl = `/media/${job.gen_id}/${outName}`;
+      state.current.data.clips.splice(insertIdx, 0, {
+        generation_id: job.gen_id, kind, url: newUrl, source_path: newUrl, duration: dur, mute: false, effect: "none",
+      });
+      selectClip(insertIdx);
+      setAiStatus(msg);
+      saveCurrentProject();
+    },
+  });
+}
+
+async function triggerAiAction(actionType, targetClipIndex = null) {
+  const clips = state.current.data.clips;
+  const prompt = ($("timeline-ai-prompt") && $("timeline-ai-prompt").value.trim()) || "cinematic high quality";
+  const seconds = Number(($("timeline-ai-seconds") && $("timeline-ai-seconds").value) || 5);
+  setAiStatus("Preparando generación IA...");
+  try {
+    if (actionType === "continue_i2v") {
+      const refIdx = targetClipIndex !== null ? targetClipIndex : (state.selectedIndex ?? (clips.length - 1));
+      const refClip = clips[refIdx];
+      if (!refClip) throw new Error("No hay clip de referencia para continuar");
+      state.aiGenerating = true;
+      renderTracks();
+      const frameRes = await postJson("/api/timeline/extract_frame", {
+        generation_id: refClip.generation_id,
+        source_path: refClip.source_path,
+        position: "last",
+      });
+      setAiStatus("Encolando animación I2V...");
+      const payload = {
+        engine: "h3",
+        mode: "i2v",
+        image_b64: frameRes.image_b64,
+        prompt,
+        motion_positive: prompt,
+        seconds,
+        aspect: "horizontal",
+      };
+      if (!payload.image_b64 && frameRes.image_name) {
+        payload.image_name = frameRes.image_name;
+      }
+      const res = await postJson("/api/video/generate", payload);
+      await enqueueClipJob(res.job_id, "video", seconds, refIdx + 1, "¡Clip I2V insertado!");
+    } else if (actionType === "bridge_flf2v") {
+      if (clips.length < 2) throw new Error("Se requieren al menos 2 clips para puente FLF2V");
+      const idxA = targetClipIndex !== null ? targetClipIndex : Math.max(0, clips.length - 2);
+      const idxB = idxA + 1;
+      state.aiGenerating = true;
+      renderTracks();
+      setAiStatus("Extrayendo extremos para puente FLF2V...");
+      const fA = await postJson("/api/timeline/extract_frame", { generation_id: clips[idxA].generation_id, source_path: clips[idxA].source_path, position: "last" });
+      const fB = await postJson("/api/timeline/extract_frame", { generation_id: clips[idxB].generation_id, source_path: clips[idxB].source_path, position: "first" });
+      const payload = {
+        engine: "h3",
+        mode: "flf2v",
+        image_b64: fA.image_b64,
+        last_image_b64: fB.image_b64,
+        prompt,
+        motion_positive: prompt,
+        seconds,
+        aspect: "horizontal",
+      };
+      if (!payload.image_b64 && fA.image_name) payload.image_name = fA.image_name;
+      if (!payload.last_image_b64 && fB.image_name) payload.last_image_name = fB.image_name;
+      const res = await postJson("/api/video/generate", payload);
+      await enqueueClipJob(res.job_id, "video", seconds, idxB, "¡Clip puente FLF2V insertado!");
+    } else if (actionType === "insert_image") {
+      state.aiGenerating = true;
+      renderTracks();
+      setAiStatus("Generando imagen Anima...");
+      const modelId = document.getElementById("model")?.value || "anima-official-aesthetic-v11";
+      const res = await postJson("/api/generate", { model_id: modelId, prompt, negative: "", size: "1024x1024" });
+      await enqueueClipJob(res.job_id, "image", 3.0, clips.length, "¡Imagen insertada!");
+    }
+  } catch (err) {
+    state.aiGenerating = false;
+    renderTracks();
+    setAiStatus(err.message, true);
+  }
+}
+
+export function initTimelineTab() {
+  const trackVideo = $("timeline-track-video");
+  if (trackVideo) { trackVideo.addEventListener("click", handleTrackClick); trackVideo.addEventListener("change", handleTrackChange); }
+  const trackAudio = $("timeline-track-audio");
+  if (trackAudio) {
+    trackAudio.addEventListener("click", (e) => {
+      const delIdx = e.target.dataset.delAudio;
+      if (delIdx != null) { state.current.data.audio_tracks.splice(Number(delIdx), 1); renderAudioTrack(); }
+    });
+    trackAudio.addEventListener("change", (e) => {
+      const idx = Number(e.target.dataset.idx);
+      const field = e.target.dataset.field;
+      const t = state.current.data.audio_tracks[idx];
+      if (t) {
+        if (field === "start") t.start_time = Number(e.target.value) || 0;
+        if (field === "vol") t.volume = Number(e.target.value) || 1.0;
+      }
+    });
+  }
+
+  on("btn-timeline-new", "click", () => {
+    state.current = { id: null, name: "Mi Secuencia", data: { clips: [], audio_tracks: [], width: 1280, height: 720, fps: 24 } };
+    const nameInput = $("timeline-project-name");
+    if (nameInput) nameInput.value = "Mi Secuencia";
+    const select = $("timeline-project-select");
+    if (select) select.value = "";
+    renderTracks(); setTimelineStatus("Nuevo proyecto iniciado");
+  });
+
+  on("btn-timeline-save", "click", saveCurrentProject);
+  on("btn-timeline-export", "click", exportTimeline);
+  on("btn-timeline-play-all", "click", togglePlayAll);
+  on("btn-timeline-refresh-media", "click", refreshTimelineMedia);
+  on("timeline-media-filter", "change", refreshTimelineMedia);
+
+  on("timeline-project-select", "change", async (e) => {
+    const id = e.target.value;
+    if (!id) return;
+    try {
+      const proj = await api(`/api/timeline/projects/${id}`);
+      state.current = proj;
+      const nameInput = $("timeline-project-name");
+      if (nameInput) nameInput.value = proj.name;
+      renderTracks(); selectClip(0); setTimelineStatus(`Proyecto '${proj.name}' cargado`);
+    } catch (err) { setTimelineStatus(err.message, true); }
+  });
+
+  on("btn-timeline-ai-generate", "click", () => {
+    triggerAiAction(($("timeline-ai-action") && $("timeline-ai-action").value) || "continue_i2v");
+  });
+
+  on("btn-timeline-add-audio", "click", () => {
+    const input = $("timeline-audio-input");
+    if (input) input.click();
+  });
+
+  on("timeline-audio-input", "change", async (e) => {
+    const file = (e.target.files || [])[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append("file", file);
+    setTimelineStatus("Subiendo pista de audio...");
+    try {
+      const res = await fetch("/api/timeline/upload_audio", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Fallo en subida");
+      state.current.data.audio_tracks.push({ source_path: data.audio_path, url: data.audio_url, start_time: 0, volume: 1.0 });
+      renderAudioTrack(); setTimelineStatus(`Pista añadida: ${file.name}`);
+    } catch (err) { setTimelineStatus(err.message, true); }
+  });
+
+  const previewVideo = $("timeline-preview-video");
+  if (previewVideo) {
+    previewVideo.addEventListener("ended", () => { if (state.isPlayingAll) { state.playIndex++; playNextInSequence(); } });
+  }
+
+  loadTimelineProjects();
+  refreshTimelineMedia();
+  renderTracks();
+}

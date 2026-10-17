@@ -67,6 +67,16 @@ function loadUpscaleInterpolation(entry) {
     setSelectValue(select, entry.default);
   }
   upscaleCkptNote();
+  const rifeSelect = $("upscale-rife-model");
+  if (rifeSelect) {
+    const previousRife = rifeSelect.value;
+    rifeSelect.replaceChildren();
+    rifeSelect.appendChild(option("", "Sin interpolación"));
+    for (const ckpt of ckpts) {
+      rifeSelect.appendChild(option(ckpt, ckpt));
+    }
+    setSelectValue(rifeSelect, previousRife);
+  }
   const multipliers = (entry && entry.multipliers) || [];
   if (multipliers.length) {
     const multiplierSelect = $("upscale-multiplier");
@@ -700,7 +710,12 @@ function applyUpscaleKind() {
   $("upscale-multiplier-field").classList.toggle("hidden", !isFps);
   $("upscale-file-field").classList.toggle("hidden", isVideo);
   $("upscale-passes-field").classList.toggle("hidden", isVideo);
-  $("upscale-sharpen-field").classList.toggle("hidden", isVideo);
+  $("upscale-mode-field").classList.toggle("hidden", isVideo);
+  const isDiffMode = !isVideo && $("upscale-mode") && $("upscale-mode").value !== "fast";
+  $("upscale-denoise-field").classList.toggle("hidden", !isDiffMode);
+  $("upscale-sharpen-field").classList.toggle("hidden", isFps);
+  $("upscale-sharpen-method-field").classList.toggle("hidden", isFps);
+  $("upscale-rife-model-field").classList.toggle("hidden", kind !== "video");
   $("btn-upscale").textContent = isFps ? "Interpolar" : "Escalar";
   updateUpscaleSourceView();
   updateUpscaleActions();
@@ -800,6 +815,18 @@ async function generateUpscale() {
     }
     payload.source_gen = source.id;
     payload.model = model;
+    const sharpen = Number($("upscale-sharpen").value);
+    if ([0, 1, 2].includes(sharpen) && sharpen > 0) {
+      payload.sharpen = sharpen;
+    }
+    const sharpenMethod = $("upscale-sharpen-method") ? $("upscale-sharpen-method").value : "legacy";
+    if (sharpenMethod && sharpenMethod !== "legacy") {
+      payload.sharpen_method = sharpenMethod;
+    }
+    const rifeModel = $("upscale-rife-model") ? $("upscale-rife-model").value : "";
+    if (rifeModel) {
+      payload.rife_model = rifeModel;
+    }
   } else {
     const model = $("upscale-model").value;
     if (!model) {
@@ -819,6 +846,18 @@ async function generateUpscale() {
     payload.model = model;
     payload.passes = passes;
     payload.sharpen = sharpen;
+    const sharpenMethod = $("upscale-sharpen-method") ? $("upscale-sharpen-method").value : "legacy";
+    if (sharpenMethod && sharpenMethod !== "legacy") {
+      payload.sharpen_method = sharpenMethod;
+    }
+    const upscaleMode = $("upscale-mode") ? $("upscale-mode").value : "fast";
+    if (upscaleMode && upscaleMode !== "fast") {
+      payload.upscale_mode = upscaleMode;
+      const denoiseVal = Number($("upscale-denoise").value);
+      if (Number.isFinite(denoiseVal)) {
+        payload.denoise = denoiseVal;
+      }
+    }
     if (local) {
       payload.image_b64 = local.b64;
     } else {
@@ -848,7 +887,8 @@ async function generateUpscale() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = state.activeJobsCount > 0 ? `Encolar (${state.activeJobsCount})` : "Escalar";
+      const isEn = (localStorage.getItem("waifu_lang") || "es").toLowerCase() === "en";
+      btn.textContent = state.activeJobsCount > 0 ? (isEn ? `Queue (${state.activeJobsCount})` : `Encolar (${state.activeJobsCount})`) : (isEn ? "Upscale" : "Escalar");
     }
   }
 }
@@ -863,7 +903,8 @@ function initUpscalerTab() {
   window.addEventListener("waifu:queue-updated", () => {
     const btn = $("btn-upscale");
     if (btn) {
-      btn.textContent = state.activeJobsCount > 0 ? `Encolar (${state.activeJobsCount})` : "Escalar";
+      const isEn = (localStorage.getItem("waifu_lang") || "es").toLowerCase() === "en";
+      btn.textContent = state.activeJobsCount > 0 ? (isEn ? `Queue (${state.activeJobsCount})` : `Encolar (${state.activeJobsCount})`) : (isEn ? "Upscale" : "Escalar");
     }
   });
   on("upscale-file", "change", (event) => {
@@ -885,6 +926,10 @@ function initUpscalerTab() {
   );
   on("upscale-model", "change", upscaleModelNote);
   on("upscale-ckpt", "change", upscaleCkptNote);
+  on("upscale-mode", "change", () => {
+    const isDiffMode = upscaleKind() === "image" && $("upscale-mode") && $("upscale-mode").value !== "fast";
+    $("upscale-denoise-field").classList.toggle("hidden", !isDiffMode);
+  });
   on("btn-upscale", "click", generateUpscale);
   on("btn-upscale-cancel", "click", cancelJob);
   on("upscale-preview", "click", () => {

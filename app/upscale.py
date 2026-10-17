@@ -53,11 +53,17 @@ FPS_MULTIPLIERS = (2, 4)
 UPSCALE_PASSES = (1, 2)
 UPSCALE_SHARPEN = (0, 1, 2)
 SHARPEN_CLASS = "ImageSharpen"
+SHARPEN_KJ_CLASS = "ImageSharpenKJ"
 SHARPEN_ID = "6"
 SHARPEN_PRESETS = {
     1: {"sharpen_radius": 1, "sigma": 0.8, "alpha": 0.6},
     2: {"sharpen_radius": 2, "sigma": 1.0, "alpha": 1.2},
 }
+VALID_SHARPEN_METHODS = frozenset({"legacy", "rcas", "adaptive_usm"})
+VALID_UPSCALE_MODES = frozenset({"fast", "hires", "qwen_remaster"})
+DENOISE_MIN = 0.10
+DENOISE_MAX = 0.50
+DEFAULT_DENOISE = 0.25
 
 # Defaults exactos del nodo RIFE VFI (custom node ComfyUI-Frame-Interpolation);
 # el ckpt y el multiplier los fija el job.
@@ -343,6 +349,63 @@ def parse_sharpen(value: Any) -> int:
     return value
 
 
+def parse_sharpen_method(value: Any) -> str:
+    """Metodo de enfoque: legacy (ImageSharpen), rcas o adaptive_usm (ImageSharpenKJ)."""
+    if value is None:
+        return "legacy"
+    if not isinstance(value, str) or value.strip() not in VALID_SHARPEN_METHODS:
+        allowed = "|".join(sorted(VALID_SHARPEN_METHODS))
+        raise EngineError(
+            f"sharpen_method invalido (usar {allowed}): {value!r}"
+        )
+    return value.strip()
+
+
+def parse_upscale_mode(value: Any) -> str:
+    """Modo de escalado: fast (GAN puro), hires (Anima difusion), qwen_remaster (Qwen 2.1)."""
+    if value is None:
+        return "fast"
+    if not isinstance(value, str) or value.strip() not in VALID_UPSCALE_MODES:
+        allowed = "|".join(sorted(VALID_UPSCALE_MODES))
+        raise EngineError(
+            f"upscale_mode invalido (usar {allowed}): {value!r}"
+        )
+    return value.strip()
+
+
+def parse_denoise(value: Any) -> float:
+    """Denoise para modos generativos de escalado (0.10 a 0.50)."""
+    if value is None:
+        return DEFAULT_DENOISE
+    if isinstance(value, bool):
+        raise EngineError(f"denoise invalido: {value!r}")
+    try:
+        val = float(value)
+    except (TypeError, ValueError) as exc:
+        raise EngineError(f"denoise invalido: {value!r}") from exc
+    if not DENOISE_MIN <= val <= DENOISE_MAX:
+        raise EngineError(
+            f"denoise fuera de [{DENOISE_MIN}, {DENOISE_MAX}]: {value!r}"
+        )
+    return val
+
+
+def resolve_upscale_model_file(model_file: str, config: Any = None) -> str:
+    """Fallback transparente a RealESRGAN_x2.pth si el modelo no existe en disco."""
+    if not config or not hasattr(config, "comfy_root"):
+        return model_file
+    models_dir = Path(config.comfy_root) / "models" / "upscale_models"
+    if not models_dir.is_dir():
+        return model_file
+    target = models_dir / model_file
+    if target.is_file():
+        return model_file
+    fallback = models_dir / "RealESRGAN_x2.pth"
+    if fallback.is_file():
+        return "RealESRGAN_x2.pth"
+    return model_file
+
+
 def _require_plain_name(value: Any, label: str) -> str:
     """Nombre de archivo simple (sin rutas ni ``..``): image/model del grafo."""
     if not isinstance(value, str) or not value.strip():
@@ -380,29 +443,32 @@ def build_upscale_graph(
     *,
     passes: int = 1,
     sharpen: int = 0,
+    sharpen_method: str = "legacy",
+    upscale_mode: str = "fast",
+    denoise: float = DEFAULT_DENOISE,
     prefix: str = DEFAULT_PREFIX,
     filename_prefix: str = DEFAULT_FILENAME_PREFIX,
 ) -> dict:
-    """Grafo API minimo de escalado de una imagen.
+    """Grafo API de escalado de una imagen (Fast GAN, Hires Difusion o Qwen Remaster).
 
-    Nodos: LoadImage (``image_name``), UpscaleModelLoader (``model_file``),
-    ImageUpscaleWithModel y SaveImage. Con ``passes=2`` la salida de la primera
-    ampliacion entra en una segunda ``ImageUpscaleWithModel`` con el mismo
-    modelo (×2 × ×2 = ×4) y SaveImage guarda esa cadena. Con ``sharpen`` 1|2 se
-    anade una mejora de detalle ``ImageSharpen`` (presets suave/fuerte) tras la
-    ultima ampliacion, antes de SaveImage; ``sharpen=0`` no anade nodo. El
-    prefijo de guardado final es ``prefix/filename_prefix`` (o solo
-    ``filename_prefix`` si ``prefix`` va vacio). EngineError si un nombre no es
-    un archivo simple, un prefijo escapa del arbol de output, ``passes`` no es
-    1|2 o ``sharpen`` no es 0|1|2.
+    Nodos base: LoadImage (``image_name``), UpscaleModelLoader (``model_file``),
+    ImageUpscaleWithModel y SaveImage. Con ``passes=2`` encadena una segunda
+    ampliacion. Con ``sharpen`` 1|2 aplica ImageSharpen (legacy) o ImageSharpenKJ
+    (rcas/adaptive_usm).
+    Con ``upscale_mode="hires"`` anade difusion con modelo Anima y denoise.
+    Con ``upscale_mode="qwen_remaster"`` anade refinamiento semantico con Qwen 2.1.
     """
     image_name = _require_plain_name(image_name, "upscale: image_name")
     model_file = _require_plain_name(model_file, "upscale: model_file")
     passes = parse_passes(passes)
     sharpen = parse_sharpen(sharpen)
+    sharpen_method = parse_sharpen_method(sharpen_method)
+    upscale_mode = parse_upscale_mode(upscale_mode)
+    denoise = parse_denoise(denoise)
     prefix = _require_prefix(prefix, "upscale: prefix", allow_empty=True)
     filename_prefix = _require_prefix(filename_prefix, "upscale: filename_prefix")
     save_prefix = f"{prefix}/{filename_prefix}" if prefix else filename_prefix
+
     graph = {
         LOAD_IMAGE_ID: {
             "class_type": "LoadImage",
@@ -424,6 +490,7 @@ def build_upscale_graph(
             "inputs": {"filename_prefix": save_prefix, "images": [UPSCALE_ID, 0]},
         },
     }
+    last_id = [UPSCALE_ID, 0]
     if passes == 2:
         graph[UPSCALE2_ID] = {
             "class_type": "ImageUpscaleWithModel",
@@ -432,15 +499,171 @@ def build_upscale_graph(
                 "image": [UPSCALE_ID, 0],
             },
         }
-        graph[SAVE_IMAGE_ID]["inputs"]["images"] = [UPSCALE2_ID, 0]
+        last_id = [UPSCALE2_ID, 0]
+        graph[SAVE_IMAGE_ID]["inputs"]["images"] = last_id
+
     if sharpen != 0:
-        last_id = UPSCALE2_ID if passes == 2 else UPSCALE_ID
-        graph[SHARPEN_ID] = {
-            "class_type": SHARPEN_CLASS,
-            "inputs": {"image": [last_id, 0], **SHARPEN_PRESETS[sharpen]},
+        if sharpen_method in ("rcas", "adaptive_usm"):
+            strength = 0.45 if sharpen == 1 else 0.75
+            graph[SHARPEN_ID] = {
+                "class_type": SHARPEN_KJ_CLASS,
+                "inputs": {
+                    "image": last_id,
+                    "images": last_id,
+                    "method": {
+                        "method": sharpen_method,
+                        "strength": strength,
+                        "radius": 1.0,
+                        "threshold": 0.02,
+                    },
+                    "strength": strength,
+                    "radius": 1,
+                    "sigma": 1.0,
+                    "threshold": 0.02,
+                },
+            }
+        else:
+            graph[SHARPEN_ID] = {
+                "class_type": SHARPEN_CLASS,
+                "inputs": {"image": last_id, **SHARPEN_PRESETS[sharpen]},
+            }
+        last_id = [SHARPEN_ID, 0]
+        graph[SAVE_IMAGE_ID]["inputs"]["images"] = last_id
+
+    if upscale_mode == "hires":
+        graph["10"] = {
+            "class_type": "VAELoader",
+            "inputs": {"vae_name": "qwen_image_vae.safetensors"},
         }
-        graph[SAVE_IMAGE_ID]["inputs"]["images"] = [SHARPEN_ID, 0]
+        graph["11"] = {
+            "class_type": "UNETLoader",
+            "inputs": {
+                "unet_name": "Anima-2.9B-preview-v1.safetensors",
+                "weight_dtype": "default",
+            },
+        }
+        graph["12"] = {
+            "class_type": "CLIPLoader",
+            "inputs": {
+                "clip_name": "qwen_3_06b_base.safetensors",
+                "type": "stable_diffusion",
+            },
+        }
+        graph["13"] = {
+            "class_type": "CLIPTextEncode",
+            "inputs": {
+                "clip": ["12", 0],
+                "text": "masterpiece, best quality, ultra-detailed, sharp clean linework, intricate details",
+            },
+        }
+        graph["14"] = {
+            "class_type": "CLIPTextEncode",
+            "inputs": {
+                "clip": ["12", 0],
+                "text": "blurry, lowres, artifacts, halo, noise",
+            },
+        }
+        graph["15"] = {
+            "class_type": "VAEEncode",
+            "inputs": {
+                "pixels": last_id,
+                "vae": ["10", 0],
+            },
+        }
+        graph["16"] = {
+            "class_type": "KSampler",
+            "inputs": {
+                "model": ["11", 0],
+                "positive": ["13", 0],
+                "negative": ["14", 0],
+                "latent_image": ["15", 0],
+                "seed": 42,
+                "steps": 14,
+                "cfg": 4.0,
+                "sampler_name": "euler",
+                "scheduler": "simple",
+                "denoise": denoise,
+            },
+        }
+        graph["17"] = {
+            "class_type": "VAEDecode",
+            "inputs": {
+                "samples": ["16", 0],
+                "vae": ["10", 0],
+            },
+        }
+        graph[SAVE_IMAGE_ID]["inputs"]["images"] = ["17", 0]
+    elif upscale_mode == "qwen_remaster":
+        graph["10"] = {
+            "class_type": "UnetLoaderGGUF",
+            "inputs": {"unet_name": "qwen-image-2.1-UC-Q4_K_M.gguf"},
+        }
+        graph["11"] = {
+            "class_type": "CLIPLoader",
+            "inputs": {
+                "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+                "type": "qwen_image",
+                "device": "default",
+            },
+        }
+        graph["12"] = {
+            "class_type": "VAELoader",
+            "inputs": {"vae_name": "qwen_image_2.1_vae_bf16.safetensors"},
+        }
+        graph["13"] = {
+            "class_type": "TextEncodeQwenImage21",
+            "inputs": {
+                "clip": ["11", 0],
+                "prompt": "Enhance to ultra-high resolution, sharp clean linework, intricate micro-details, pristine quality, 8k masterpiece",
+                "negative_prompt": "blurry, lowres, artifacts, halo, noise",
+                "vae": ["12", 0],
+                "resolution": 2048,
+                "images.image_1": last_id,
+            },
+        }
+        graph["14"] = {
+            "class_type": "QwenImage21Cache",
+            "inputs": {
+                "model": ["10", 0],
+                "device": "auto",
+                "dtype": "default",
+            },
+        }
+        graph["15"] = {
+            "class_type": "VAEEncode",
+            "inputs": {
+                "pixels": last_id,
+                "vae": ["12", 0],
+            },
+        }
+        graph["16"] = {
+            "class_type": "KSampler",
+            "inputs": {
+                "model": ["14", 0],
+                "positive": ["13", 0],
+                "negative": ["13", 1],
+                "latent_image": ["15", 0],
+                "seed": 42,
+                "steps": 16,
+                "cfg": 2.5,
+                "sampler_name": "er_sde",
+                "scheduler": "beta",
+                "denoise": denoise,
+            },
+        }
+        graph["17"] = {
+            "class_type": "VAEDecode",
+            "inputs": {
+                "samples": ["16", 0],
+                "vae": ["12", 0],
+            },
+        }
+        graph[SAVE_IMAGE_ID]["inputs"]["images"] = ["17", 0]
+
     return graph
+
+
+build_image_upscale_graph = build_upscale_graph
 
 
 def build_video_upscale_graph(
@@ -449,23 +672,20 @@ def build_video_upscale_graph(
     *,
     prefix: str = DEFAULT_PREFIX,
     filename_prefix: str = DEFAULT_FILENAME_PREFIX,
+    sharpen: int = 0,
+    sharpen_method: str = "legacy",
+    rife_model: str | None = None,
 ) -> dict:
-    """Grafo API minimo de escalado de un video con nodos core.
-
-    Nodos: LoadVideo (``video_name``), GetVideoComponents (imagenes/audio/fps
-    del origen), UpscaleModelLoader (``model_file``), ImageUpscaleWithModel
-    (tiling interno del core), CreateVideo (``fps`` y ``audio`` enlazados del
-    origen) y SaveVideo en MP4. El prefijo de guardado final es
-    ``prefix/filename_prefix`` (o solo ``filename_prefix`` si ``prefix`` va
-    vacio). EngineError si un nombre no es un archivo simple o un prefijo
-    escapa del arbol de output.
-    """
+    """Grafo API de escalado de un video con nodos core, sharpen y RIFE opcional."""
     video_name = _require_plain_name(video_name, "upscale: video_name")
     model_file = _require_plain_name(model_file, "upscale: model_file")
     prefix = _require_prefix(prefix, "upscale: prefix", allow_empty=True)
     filename_prefix = _require_prefix(filename_prefix, "upscale: filename_prefix")
+    sharpen = parse_sharpen(sharpen)
+    sharpen_method = parse_sharpen_method(sharpen_method)
     save_prefix = f"{prefix}/{filename_prefix}" if prefix else filename_prefix
-    return {
+
+    graph = {
         LOAD_VIDEO_ID: {
             "class_type": "LoadVideo",
             "inputs": {"file": video_name},
@@ -502,6 +722,60 @@ def build_video_upscale_graph(
             },
         },
     }
+
+    last_images = [VIDEO_UPSCALE_ID, 0]
+    if sharpen != 0:
+        if sharpen_method in ("rcas", "adaptive_usm"):
+            strength = 0.45 if sharpen == 1 else 0.75
+            graph["7"] = {
+                "class_type": SHARPEN_KJ_CLASS,
+                "inputs": {
+                    "image": last_images,
+                    "images": last_images,
+                    "method": {
+                        "method": sharpen_method,
+                        "strength": strength,
+                        "radius": 1.0,
+                        "threshold": 0.02,
+                    },
+                    "strength": strength,
+                    "radius": 1,
+                    "sigma": 1.0,
+                    "threshold": 0.02,
+                },
+            }
+        else:
+            graph["7"] = {
+                "class_type": SHARPEN_CLASS,
+                "inputs": {"image": last_images, **SHARPEN_PRESETS[sharpen]},
+            }
+        last_images = ["7", 0]
+
+    fps_source = [VIDEO_COMPONENTS_ID, 2]
+    if rife_model:
+        rife_ckpt = fps_ckpt(rife_model)
+        graph["8"] = {
+            "class_type": "ComfyMathExpression",
+            "inputs": {
+                "expression": "a * 2",
+                "values.a": [VIDEO_COMPONENTS_ID, 2],
+            },
+        }
+        graph["9"] = {
+            "class_type": RIFE_CLASS,
+            "inputs": {
+                "ckpt_name": rife_ckpt,
+                "frames": last_images,
+                "multiplier": 2,
+                **RIFE_DEFAULTS,
+            },
+        }
+        last_images = ["9", 0]
+        fps_source = ["8", 0]
+
+    graph[CREATE_VIDEO_ID]["inputs"]["images"] = last_images
+    graph[CREATE_VIDEO_ID]["inputs"]["fps"] = fps_source
+    return graph
 
 
 def build_fps_graph(
@@ -584,7 +858,7 @@ def _progress_ws_url(config: Any) -> str:
 
 
 def _upscale_params(job: dict) -> dict:
-    return {
+    params = {
         "task": "upscale",
         "source_gen": job.get("source_gen"),
         "source_file": job.get("source_file"),
@@ -593,6 +867,13 @@ def _upscale_params(job: dict) -> dict:
         "passes": job.get("passes"),
         "sharpen": job.get("sharpen"),
     }
+    if job.get("sharpen_method") and job.get("sharpen_method") != "legacy":
+        params["sharpen_method"] = job.get("sharpen_method")
+    if job.get("upscale_mode") and job.get("upscale_mode") != "fast":
+        params["upscale_mode"] = job.get("upscale_mode")
+    if job.get("denoise") is not None and job.get("upscale_mode") and job.get("upscale_mode") != "fast":
+        params["denoise"] = job.get("denoise")
+    return params
 
 
 def run_upscale(
@@ -626,12 +907,22 @@ def run_upscale(
         job["passes"] = passes
         sharpen = parse_sharpen(job.get("sharpen"))
         job["sharpen"] = sharpen
+        sharpen_method = parse_sharpen_method(job.get("sharpen_method"))
+        job["sharpen_method"] = sharpen_method
+        upscale_mode = parse_upscale_mode(job.get("upscale_mode"))
+        job["upscale_mode"] = upscale_mode
+        denoise = parse_denoise(job.get("denoise"))
+        job["denoise"] = denoise
         job["params"] = _upscale_params(job)
+        model_file = resolve_upscale_model_file(job.get("model_file"), config)
         graph = build_upscale_graph(
             job.get("image_name"),
-            job.get("model_file"),
+            model_file,
             passes=passes,
             sharpen=sharpen,
+            sharpen_method=sharpen_method,
+            upscale_mode=upscale_mode,
+            denoise=denoise,
             prefix=job.get("prefix") or DEFAULT_PREFIX,
             filename_prefix=job.get("filename_prefix") or DEFAULT_FILENAME_PREFIX,
         )
@@ -706,7 +997,7 @@ def parse_fps(value: Any, label: str = "upscale: fps") -> float | None:
 
 
 def _video_upscale_params(job: dict) -> dict:
-    return {
+    params = {
         "task": "upscale_video",
         "source_gen": job.get("source_gen"),
         "source_file": job.get("source_file"),
@@ -714,6 +1005,13 @@ def _video_upscale_params(job: dict) -> dict:
         "scale": job.get("scale"),
         "fps": job.get("fps"),
     }
+    if job.get("sharpen") is not None and job.get("sharpen") != 0:
+        params["sharpen"] = job.get("sharpen")
+    if job.get("sharpen_method") and job.get("sharpen_method") != "legacy":
+        params["sharpen_method"] = job.get("sharpen_method")
+    if job.get("rife_model"):
+        params["rife_model"] = job.get("rife_model")
+    return params
 
 
 def run_video_upscale(
@@ -744,12 +1042,24 @@ def run_video_upscale(
     tracker = None
     try:
         job["fps"] = parse_fps(job.get("fps"))
+        sharpen = parse_sharpen(job.get("sharpen"))
+        job["sharpen"] = sharpen
+        sharpen_method = parse_sharpen_method(job.get("sharpen_method"))
+        job["sharpen_method"] = sharpen_method
+        rife_model = job.get("rife_model")
+        if rife_model:
+            rife_model = fps_ckpt(rife_model)
+        job["rife_model"] = rife_model
         job["params"] = _video_upscale_params(job)
+        model_file = resolve_upscale_model_file(job.get("model_file"), config)
         graph = build_video_upscale_graph(
             job.get("video_name"),
-            job.get("model_file"),
+            model_file,
             prefix=job.get("prefix") or DEFAULT_PREFIX,
             filename_prefix=job.get("filename_prefix") or DEFAULT_FILENAME_PREFIX,
+            sharpen=sharpen,
+            sharpen_method=sharpen_method,
+            rife_model=rife_model,
         )
         engine = (
             engine_factory()
@@ -926,6 +1236,9 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
+run_upscale_generation = run_upscale
+
+
 __all__ = [
     "CATALOG_VERSION",
     "CREATE_VIDEO_ID",
@@ -951,18 +1264,22 @@ __all__ = [
     "SAVE_VIDEO_ID",
     "SHARPEN_CLASS",
     "SHARPEN_ID",
+    "SHARPEN_KJ_CLASS",
     "SHARPEN_PRESETS",
     "UPSCALE2_ID",
     "UPSCALERS_PATH",
     "UPSCALE_ID",
     "UPSCALE_PASSES",
     "UPSCALE_SHARPEN",
+    "VALID_SHARPEN_METHODS",
+    "VALID_UPSCALE_MODES",
     "VIDEO_COMPONENTS_ID",
     "VIDEO_EXT",
     "VIDEO_HISTORY_TIMEOUT_S",
     "VIDEO_MODEL_LOADER_ID",
     "VIDEO_UPSCALE_ID",
     "build_fps_graph",
+    "build_image_upscale_graph",
     "build_upscale_graph",
     "build_video_upscale_graph",
     "fps_ckpt",
@@ -972,11 +1289,16 @@ __all__ = [
     "list_upscalers",
     "load_frame_interpolation",
     "load_upscalers",
+    "parse_denoise",
     "parse_fps",
     "parse_passes",
     "parse_sharpen",
+    "parse_sharpen_method",
+    "parse_upscale_mode",
+    "resolve_upscale_model_file",
     "run_fps",
     "run_upscale",
+    "run_upscale_generation",
     "run_video_upscale",
     "upscalers",
 ]

@@ -8,6 +8,27 @@
       "file": "RealESRGAN_x2.pth",
       "scale": 2,
       "note": "×2"
+    },
+    {
+      "id": "anime-sharp-x4",
+      "label": "4x AnimeSharp (Anime Nítido)",
+      "file": "4x-AnimeSharp.pth",
+      "scale": 4,
+      "note": "×4"
+    },
+    {
+      "id": "ultrasharp-x4",
+      "label": "4x UltraSharp (2.5D / Foto)",
+      "file": "4x-UltraSharp.pth",
+      "scale": 4,
+      "note": "×4"
+    },
+    {
+      "id": "animejanai-x2",
+      "label": "2x AnimeJaNai Compact (Vídeo Rápido)",
+      "file": "2x-AnimeJaNai_HD_V3_Compact.pth",
+      "scale": 2,
+      "note": "×2"
     }
   ],
   "frame_interpolation": {

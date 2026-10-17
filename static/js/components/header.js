@@ -5,11 +5,12 @@
 import { $, on } from "../dom.js";
 import { loadEditorGallery, loadEditorStatus } from "../tabs/editor.js";
 import { loadUpscaleGallery, applyUpscaleKind } from "../tabs/upscaler.js";
+import { applyLanguage } from "../i18n.js";
 
 const STORAGE_LANG_KEY = "waifu_lang";
 
 export function getActiveTab() {
-  const tabs = ["image", "video", "editor", "upscaler", "gallery", "test"];
+  const tabs = ["image", "video", "editor", "timeline", "upscaler", "gallery", "guide", "test"];
   for (const t of tabs) {
     const el = $(`panel-${t}`);
     if (el && el.classList.contains("active")) {
@@ -90,8 +91,12 @@ export function initLanguageSelector() {
       if (label) label.textContent = lang.toUpperCase();
       options.forEach((o) => o.classList.toggle("active", o === opt));
       dropdown.classList.add("hidden");
+      applyLanguage(lang);
       window.dispatchEvent(
         new CustomEvent("waifu:language-changed", { detail: { lang } })
+      );
+      window.dispatchEvent(
+        new CustomEvent("waifu:languagechange", { detail: { lang } })
       );
     });
   });

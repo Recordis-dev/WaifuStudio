@@ -49,8 +49,88 @@ ENCODE_CLASS = "TextEncodeQwenImage21"
 LATENT_CLASS = "EmptyLatentImage"
 KSAMPLER_CLASS = "KSampler"
 LOAD_IMAGE_CLASS = "LoadImage"
+LORA_LOADER_CLASS = "LoraLoaderModelOnly"
 REF_ID_PREFIX = "ref_"
 REF_IMAGE_KEY_PREFIX = "images.image_"
+
+VALID_SAMPLERS = frozenset({"euler", "er_sde", "dpmpp_2m"})
+VALID_SCHEDULERS = frozenset({"simple", "beta", "normal", "karras"})
+
+QWEN_POSE_PRESETS: dict[str, dict[str, str]] = {
+    "l0_editorial": {
+        "id": "l0_editorial",
+        "label": "L0 Editorial / SFW",
+        "level": "L0",
+        "template": (
+            "A wide or eye-level medium shot of the character in a poised, natural editorial "
+            "posture, standing or seated comfortably. Soft natural studio lighting with gentle "
+            "highlights, detailed realistic fabric folds, smooth lifelike skin texture. "
+            "Clean composition, photorealistic anime masterpiece, 8k resolution, impeccable artistic finish."
+        ),
+    },
+    "l1_open": {
+        "id": "l1_open",
+        "label": "L1 Open / Glamour",
+        "level": "L1",
+        "template": (
+            "A low or dynamic three-quarter angle glamour shot of the character in a relaxed, "
+            "open posture with legs parted or in an inviting recline. Warm steamy ambient illumination "
+            "casting soft rim light, glowing glistening skin sheen with delicate moisture highlights. "
+            "Tastefully revealing silhouette, highly detailed aesthetic composition, 8k masterwork."
+        ),
+    },
+    "l2_bold_nsfw": {
+        "id": "l2_bold_nsfw",
+        "label": "L2 Bold NSFW (Low Angle)",
+        "level": "L2",
+        "template": (
+            "A dramatic low-angle close-up shot capturing a bold, explicit open posture, legs spread "
+            "or prone with raised arched hips. Dramatic direct rim lighting emphasizing deep contours, "
+            "ultra-detailed explicit anatomical realism with glistening skin pores and wet sheen. "
+            "Intense intimate composition, uncensored masterpiece, pristine 8k fidelity."
+        ),
+    },
+    "l3_extreme": {
+        "id": "l3_extreme",
+        "label": "L3 Extreme Close-Up NSFW",
+        "level": "L3",
+        "template": (
+            "An extreme low-angle tight macro framing focused on the lower torso, waist, hips, and "
+            "inner thighs in an unapologetically explicit pose. Cinematic focused rim lighting "
+            "highlighting intricate intimate anatomical details, slick wet moisture sheen, glistening "
+            "surface texture. Radical close-up, uncensored 8k hyper-detailed masterwork."
+        ),
+    },
+}
+
+
+def format_qwen_7block_prompt(user_prompt: str, pose_preset: str | None = None) -> str:
+    """Combina el prompt del usuario con la plantilla de 7 bloques del preset de pose."""
+    clean_user = user_prompt.strip() if isinstance(user_prompt, str) else ""
+    if not pose_preset or pose_preset not in QWEN_POSE_PRESETS:
+        return clean_user
+    template = QWEN_POSE_PRESETS[pose_preset]["template"]
+    if not clean_user:
+        return template
+    if template.lower() in clean_user.lower():
+        return clean_user
+    return f"{clean_user}, {template}"
+
+
+def _require_sampler(value: Any) -> str:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return "euler"
+    if not isinstance(value, str) or value.strip() not in VALID_SAMPLERS:
+        raise EngineError(f"sampler_name invalido: {value!r}")
+    return value.strip()
+
+
+def _require_scheduler(value: Any) -> str:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return "simple"
+    if not isinstance(value, str) or value.strip() not in VALID_SCHEDULERS:
+        raise EngineError(f"scheduler invalido: {value!r}")
+    return value.strip()
 
 
 def _require_text(value: Any, label: str) -> str:
@@ -194,6 +274,63 @@ def _require_field(inputs: dict, field: str, node_id: str) -> None:
         raise EngineError(f"nodo {node_id!r} sin campo {field!r}")
 
 
+def _apply_editor_loras(graph: dict, loras: list[dict] | None) -> None:
+    if not loras:
+        return
+    if not isinstance(loras, list):
+        raise EngineError("loras debe ser una lista")
+    unet_id, _ = _find_node(graph, "UnetLoaderGGUF")
+
+    current_model: list[Any] = [unet_id, 0]
+    for idx, item in enumerate(loras, start=1):
+        if not isinstance(item, dict):
+            raise EngineError(f"lora #{idx} invalido: se esperaba objeto dict")
+        file = item.get("file") or item.get("lora_name")
+        if not file and item.get("id"):
+            try:
+                from app.loras import get_lora
+
+                entry = get_lora(str(item["id"]))
+                if entry:
+                    file = entry.get("file")
+            except Exception:
+                pass
+        if not file or not isinstance(file, str) or not file.strip():
+            raise EngineError(f"lora #{idx} sin archivo especificado ('file')")
+        try:
+            weight = float(item.get("weight", item.get("strength_model", 1.0)))
+        except (TypeError, ValueError) as exc:
+            raise EngineError(
+                f"lora #{idx} peso invalido: {item.get('weight')!r}"
+            ) from exc
+
+        node_id = f"lora_{idx}"
+        graph[node_id] = {
+            "class_type": LORA_LOADER_CLASS,
+            "inputs": {
+                "model": current_model,
+                "lora_name": file.strip(),
+                "strength_model": weight,
+            },
+        }
+        current_model = [node_id, 0]
+
+    for n_id, node in graph.items():
+        if str(n_id).startswith("lora_"):
+            continue
+        if isinstance(node, dict):
+            inputs = node.get("inputs")
+            if isinstance(inputs, dict):
+                val = inputs.get("model")
+                if (
+                    isinstance(val, (list, tuple))
+                    and len(val) >= 2
+                    and str(val[0]) == str(unet_id)
+                    and val[1] == 0
+                ):
+                    inputs["model"] = current_model
+
+
 def prepare_editor_graph(
     graph: dict,
     *,
@@ -205,17 +342,28 @@ def prepare_editor_graph(
     width: Any = EDITOR_DEFAULT_SIZE,
     height: Any = EDITOR_DEFAULT_SIZE,
     ref_images: Any = (),
+    sampler_name: Any = "euler",
+    scheduler: Any = "simple",
+    preserve_structure: bool = False,
+    pose_preset: str | None = None,
+    loras: list[dict] | None = None,
 ) -> dict:
     """Copia de ``graph`` con prompt/negativo/seed/steps/cfg/tamano/refs.
 
     El encoder ``TextEncodeQwenImage21`` recibe prompt, ``negative_prompt`` y el
     ``resolution`` (presupuesto de las referencias, multiplo de 32); el
     EmptyLatentImage fija el tamano de salida. El KSampler recibe ``steps``
-    (10-50) y ``cfg`` (1.0-10.0) ademas de la seed. Cada referencia anade un
-    LoadImage ``ref_N`` y su enlace ``images.image_N`` (hasta 10). Los refs
-    existentes se reemplazan. EngineError con cualquier valor fuera de rango o
-    nodo ausente; el grafo de entrada nunca se muta.
+    (10-50) y ``cfg`` (1.0-10.0) ademas de la seed, sampler_name y scheduler.
+    Cada referencia anade un LoadImage ``ref_N`` y su enlace ``images.image_N``
+    (hasta 10). Si preserve_structure=True y hay referencias, conecta la salida
+    latente del encoder a latent_image del KSampler.
+    Los LoRAs opcionales se encadenan mediante LoraLoaderModelOnly.
     """
+    if pose_preset:
+        prompt = format_qwen_7block_prompt(
+            prompt if isinstance(prompt, str) else ("" if prompt is None else str(prompt)),
+            pose_preset,
+        )
     prompt = _require_text(prompt, "prompt")
     negative = _require_negative(negative)
     seed = _require_seed(seed)
@@ -224,6 +372,8 @@ def prepare_editor_graph(
     width = _require_size_value(width, "width")
     height = _require_size_value(height, "height")
     refs = _require_refs(ref_images)
+    sampler_name = _require_sampler(sampler_name)
+    scheduler = _require_scheduler(scheduler)
 
     prepared = copy.deepcopy(graph)
     encode_id, encode = _find_node(prepared, ENCODE_CLASS)
@@ -255,6 +405,8 @@ def prepare_editor_graph(
     sampler["seed"] = seed
     sampler["steps"] = steps
     sampler["cfg"] = cfg
+    sampler["sampler_name"] = sampler_name
+    sampler["scheduler"] = scheduler
 
     for index, image in enumerate(refs, start=1):
         node_id = f"{REF_ID_PREFIX}{index}"
@@ -265,6 +417,11 @@ def prepare_editor_graph(
             "inputs": {"image": image},
         }
         encode[f"{REF_IMAGE_KEY_PREFIX}{index}"] = [node_id, 0]
+
+    if preserve_structure and refs:
+        sampler["latent_image"] = [encode_id, 2]
+
+    _apply_editor_loras(prepared, loras)
     return prepared
 
 
@@ -278,6 +435,11 @@ def build_editor_graph(
     width: Any = EDITOR_DEFAULT_SIZE,
     height: Any = EDITOR_DEFAULT_SIZE,
     ref_images: Any = (),
+    sampler_name: Any = "euler",
+    scheduler: Any = "simple",
+    preserve_structure: bool = False,
+    pose_preset: str | None = None,
+    loras: list[dict] | None = None,
     template_path: str | Path = EDITOR_TEMPLATE_PATH,
 ) -> dict:
     """Carga el template del editor y devuelve el grafo listo para encolar."""
@@ -292,6 +454,11 @@ def build_editor_graph(
         width=width,
         height=height,
         ref_images=ref_images,
+        sampler_name=sampler_name,
+        scheduler=scheduler,
+        preserve_structure=preserve_structure,
+        pose_preset=pose_preset,
+        loras=loras,
     )
 
 
@@ -339,6 +506,11 @@ def run_editor_generation(
             width=job.get("width", EDITOR_DEFAULT_SIZE),
             height=job.get("height", EDITOR_DEFAULT_SIZE),
             ref_images=job.get("ref_images") or (),
+            sampler_name=job.get("sampler_name", "euler"),
+            scheduler=job.get("scheduler", "simple"),
+            preserve_structure=bool(job.get("preserve_structure", False)),
+            pose_preset=job.get("pose_preset"),
+            loras=job.get("loras"),
             template_path=job.get("template") or EDITOR_TEMPLATE_PATH,
         )
         engine = engine_factory() if engine_factory is not None else ComfyEngine(config)
@@ -409,7 +581,12 @@ __all__ = [
     "EDITOR_SIZE_MIN",
     "EDITOR_SIZE_STEP",
     "EDITOR_TEMPLATE_PATH",
+    "QWEN_POSE_PRESETS",
+    "VALID_SAMPLERS",
+    "VALID_SCHEDULERS",
     "build_editor_graph",
+    "format_qwen_7block_prompt",
+    "inherit_size_from_image",
     "prepare_editor_graph",
     "run_editor_generation",
 ]

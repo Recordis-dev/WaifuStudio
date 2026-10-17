@@ -22,9 +22,12 @@ from app.upscale import (
     frame_interpolation,
     get_upscaler,
     list_upscalers,
+    parse_denoise,
     parse_fps,
     parse_passes,
     parse_sharpen,
+    parse_sharpen_method,
+    parse_upscale_mode,
 )
 
 router = APIRouter()
@@ -92,14 +95,24 @@ async def api_upscale(request: Request, payload: dict = Body(...)) -> Any:
     ):
         raise EngineError("passes solo aplica a imagen")
     raw_sharpen = payload.get("sharpen")
-    if source_kind == "image":
+    if source_kind in ("image", "video"):
         sharpen = parse_sharpen(raw_sharpen)
     elif raw_sharpen is not None and not (
         isinstance(raw_sharpen, int)
         and not isinstance(raw_sharpen, bool)
         and raw_sharpen == 0
     ):
-        raise EngineError("sharpen solo aplica a imagen")
+        raise EngineError("sharpen no aplica a fps")
+    else:
+        sharpen = 0
+
+    sharpen_method = parse_sharpen_method(payload.get("sharpen_method"))
+    upscale_mode = parse_upscale_mode(payload.get("upscale_mode"))
+    denoise = parse_denoise(payload.get("denoise"))
+    rife_model = payload.get("rife_model")
+    if rife_model is not None:
+        rife_model = fps_ckpt(rife_model)
+
     if source_kind == "image" and image_b64 is not None:
         if payload.get("source_gen") is not None:
             raise EngineError(
@@ -118,6 +131,11 @@ async def api_upscale(request: Request, payload: dict = Body(...)) -> Any:
             "passes": passes,
             "sharpen": sharpen,
         }
+        if sharpen_method != "legacy":
+            params["sharpen_method"] = sharpen_method
+        if upscale_mode != "fast":
+            params["upscale_mode"] = upscale_mode
+            params["denoise"] = denoise
         gen_id = st.add(
             "upscale", "upscale archivo local", "", params, kind="image"
         )
@@ -132,6 +150,9 @@ async def api_upscale(request: Request, payload: dict = Body(...)) -> Any:
             "scale": entry["scale"],
             "passes": passes,
             "sharpen": sharpen,
+            "sharpen_method": sharpen_method,
+            "upscale_mode": upscale_mode,
+            "denoise": denoise,
             "params": dict(params),
         }
         _JOBS[gen_id] = {
@@ -194,7 +215,7 @@ async def api_upscale(request: Request, payload: dict = Body(...)) -> Any:
     fps_in = None
     fps_out = None
     if source_kind == "fps":
-        ckpt = fps_ckpt(payload.get("ckpt"))
+        ckpt = fps_ckpt(payload.get("rife_model") or payload.get("ckpt"))
         multiplier = fps_multiplier(payload.get("multiplier"))
         fps_in = parse_fps(payload.get("fps_in"), "fps_in")
         fps_out = None if fps_in is None else fps_in * multiplier
@@ -244,6 +265,12 @@ async def api_upscale(request: Request, payload: dict = Body(...)) -> Any:
             "scale": entry["scale"],
             "fps": None,
         }
+        if sharpen != 0:
+            params["sharpen"] = sharpen
+        if sharpen_method != "legacy":
+            params["sharpen_method"] = sharpen_method
+        if rife_model:
+            params["rife_model"] = rife_model
         gen_id = st.add(
             "upscale",
             f"upscale #{source_gen}/{file_name}",
@@ -262,6 +289,9 @@ async def api_upscale(request: Request, payload: dict = Body(...)) -> Any:
             "model_file": entry["file"],
             "scale": entry["scale"],
             "fps": None,
+            "sharpen": sharpen,
+            "sharpen_method": sharpen_method,
+            "rife_model": rife_model,
             "params": dict(params),
         }
     else:
@@ -274,6 +304,11 @@ async def api_upscale(request: Request, payload: dict = Body(...)) -> Any:
             "passes": passes,
             "sharpen": sharpen,
         }
+        if sharpen_method != "legacy":
+            params["sharpen_method"] = sharpen_method
+        if upscale_mode != "fast":
+            params["upscale_mode"] = upscale_mode
+            params["denoise"] = denoise
         gen_id = st.add(
             "upscale",
             f"upscale #{source_gen}/{file_name}",
@@ -292,6 +327,9 @@ async def api_upscale(request: Request, payload: dict = Body(...)) -> Any:
             "scale": entry["scale"],
             "passes": passes,
             "sharpen": sharpen,
+            "sharpen_method": sharpen_method,
+            "upscale_mode": upscale_mode,
+            "denoise": denoise,
             "params": dict(params),
         }
     _JOBS[gen_id] = {

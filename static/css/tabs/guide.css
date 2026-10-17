@@ -1,0 +1,228 @@
+/* WAIFU - Pestaña Guía Interactiva (M20 T-04) */
+
+#panel-guide {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  box-sizing: border-box;
+  color: #eee;
+}
+
+#panel-guide[hidden] {
+  display: none !important;
+}
+
+.guide-hero {
+  background: linear-gradient(135deg, rgba(255, 64, 129, 0.15) 0%, rgba(20, 20, 26, 0.95) 100%);
+  border: 1px solid rgba(255, 64, 129, 0.35);
+  border-radius: 12px;
+  padding: 28px 24px;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.guide-hero h2 {
+  font-size: 24px;
+  color: #fff;
+  margin: 0 0 8px 0;
+  font-weight: 700;
+}
+
+.guide-hero p {
+  color: #bbb;
+  font-size: 14px;
+  max-width: 750px;
+  margin: 0 auto 24px auto;
+  line-height: 1.5;
+}
+
+.guide-quickstart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.guide-step-card {
+  background: #1a1a24;
+  border: 1px solid #2e2e3e;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: transform 0.15s, border-color 0.15s;
+}
+
+.guide-step-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent, #ff4081);
+}
+
+.guide-step-card h3 {
+  font-size: 14px;
+  color: #ff80ab;
+  margin: 0;
+  font-weight: 600;
+}
+
+.guide-step-card p {
+  font-size: 12px;
+  color: #aaa;
+  margin: 0;
+  flex: 1;
+  line-height: 1.4;
+}
+
+.guide-step-card button {
+  align-self: flex-start;
+  background: #2b2b3a;
+  border: 1px solid #44445c;
+  color: #fff;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.guide-step-card button:hover {
+  background: var(--accent, #ff4081);
+  border-color: var(--accent, #ff4081);
+}
+
+.guide-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: #16161f;
+  border: 1px solid #282836;
+  border-radius: 8px;
+}
+
+.guide-nav {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.guide-nav-btn {
+  background: #20202c;
+  border: 1px solid #333346;
+  color: #ccc;
+  border-radius: 5px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.guide-nav-btn.active {
+  background: var(--accent, #ff4081);
+  color: #fff;
+  border-color: var(--accent, #ff4081);
+}
+
+#guide-search {
+  background: #121218;
+  border: 1px solid #2e2e3e;
+  color: #fff;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  width: 240px;
+  outline: none;
+}
+
+.guide-section {
+  background: #16161f;
+  border: 1px solid #282836;
+  border-radius: 10px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.guide-section.hidden {
+  display: none !important;
+}
+
+.guide-section h3 {
+  font-size: 18px;
+  color: #fff;
+  margin: 0;
+  border-bottom: 1px solid #2a2a38;
+  padding-bottom: 8px;
+}
+
+.guide-section p, .guide-section li {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #bbb;
+}
+
+.guide-section strong {
+  color: #fff;
+}
+
+.guide-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.guide-table th, .guide-table td {
+  padding: 8px 12px;
+  border: 1px solid #2e2e3e;
+  text-align: left;
+}
+
+.guide-table th {
+  background: #20202c;
+  color: #ff80ab;
+}
+
+.guide-accordion {
+  border: 1px solid #2e2e3e;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.guide-acc-header {
+  background: #1e1e28;
+  padding: 12px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #eee;
+}
+
+.guide-acc-header:hover {
+  background: #252532;
+}
+
+.guide-acc-body {
+  padding: 14px;
+  background: #121218;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #bbb;
+  border-top: 1px solid #2e2e3e;
+}
+
+.guide-acc-body.hidden {
+  display: none !important;
+}

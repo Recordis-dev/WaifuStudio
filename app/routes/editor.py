@@ -23,6 +23,10 @@ from app.editor import (
     EDITOR_SEED_MAX,
     EDITOR_STEPS_MAX,
     EDITOR_STEPS_MIN,
+    QWEN_POSE_PRESETS,
+    VALID_SAMPLERS,
+    VALID_SCHEDULERS,
+    format_qwen_7block_prompt,
     inherit_size_from_image,
 )
 from app.editor_models import editor_model
@@ -98,6 +102,12 @@ async def api_editor_status(request: Request) -> dict:
     }
 
 
+@router.get("/api/editor/pose_presets")
+async def api_editor_pose_presets() -> dict:
+    """Retorna los presets de pose Qwen 2.1 (L0..L3)."""
+    return {"presets": list(QWEN_POSE_PRESETS.values())}
+
+
 @router.post("/api/editor/generate")
 async def api_editor_generate(request: Request, payload: dict = Body(...)) -> Any:
     """Valida y encola una generación del editor Qwen-Image 2.1 (M10-3).
@@ -115,8 +125,17 @@ async def api_editor_generate(request: Request, payload: dict = Body(...)) -> An
     st = request.app.state.store
     queue = request.app.state.queue
 
+    pose_preset = payload.get("pose_preset")
+    if pose_preset is not None:
+        if not isinstance(pose_preset, str) or (pose_preset and pose_preset not in QWEN_POSE_PRESETS):
+            return JSONResponse(status_code=400, content={"error": "pose_preset invalido"})
+    else:
+        pose_preset = None
+
     prompt = payload.get("prompt")
-    if not isinstance(prompt, str) or not prompt.strip():
+    if pose_preset and (not prompt or (isinstance(prompt, str) and not prompt.strip())):
+        prompt = QWEN_POSE_PRESETS[pose_preset]["template"]
+    elif not isinstance(prompt, str) or not prompt.strip():
         return JSONResponse(status_code=400, content={"error": "prompt vacio"})
     mode = payload.get("mode") or "generate"
     if mode not in ("generate", "edit"):
@@ -236,6 +255,23 @@ async def api_editor_generate(request: Request, payload: dict = Body(...)) -> An
             status_code=400,
             content={"error": f"cfg fuera de [{EDITOR_CFG_MIN}, {EDITOR_CFG_MAX}]"},
         )
+
+    sampler_name = payload.get("sampler_name")
+    if sampler_name is not None and (not isinstance(sampler_name, str) or sampler_name.strip() not in VALID_SAMPLERS):
+        return JSONResponse(status_code=400, content={"error": f"sampler_name invalido: {sampler_name!r}"})
+    sampler_name = sampler_name.strip() if isinstance(sampler_name, str) and sampler_name.strip() else "euler"
+
+    scheduler = payload.get("scheduler")
+    if scheduler is not None and (not isinstance(scheduler, str) or scheduler.strip() not in VALID_SCHEDULERS):
+        return JSONResponse(status_code=400, content={"error": f"scheduler invalido: {scheduler!r}"})
+    scheduler = scheduler.strip() if isinstance(scheduler, str) and scheduler.strip() else "simple"
+
+    preserve_structure = bool(payload.get("preserve_structure", False))
+
+    loras = payload.get("loras")
+    if loras is not None and not isinstance(loras, list):
+        return JSONResponse(status_code=400, content={"error": "loras invalido; usar lista"})
+
     if original_size:
         if not raw_refs:
             return JSONResponse(
@@ -266,10 +302,18 @@ async def api_editor_generate(request: Request, payload: dict = Body(...)) -> An
         "seed": seed,
         "steps": steps,
         "cfg": cfg_value,
+        "sampler_name": sampler_name,
+        "scheduler": scheduler,
+        "preserve_structure": preserve_structure,
         "ref_images": ref_images,
     }
     if original_size:
         params["original_size"] = True
+    if pose_preset:
+        params["pose_preset"] = pose_preset
+    if loras:
+        params["loras"] = loras
+
     gen_id = st.add(
         EDITOR_MODEL, prompt.strip(), negative.strip(), params, kind="image"
     )
@@ -283,6 +327,11 @@ async def api_editor_generate(request: Request, payload: dict = Body(...)) -> An
         "cfg": cfg_value,
         "width": width,
         "height": height,
+        "sampler_name": sampler_name,
+        "scheduler": scheduler,
+        "preserve_structure": preserve_structure,
+        "pose_preset": pose_preset,
+        "loras": loras,
         "ref_images": ref_images,
         "params": dict(params),
     }

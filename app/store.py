@@ -9,6 +9,7 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import uuid
 
 from app.engine import EngineError
 
@@ -24,6 +25,16 @@ CREATE TABLE IF NOT EXISTS generations (
     outputs TEXT DEFAULT '[]',
     error TEXT,
     kind TEXT NOT NULL DEFAULT 'image'
+)
+"""
+
+_TIMELINE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS timeline_projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    data_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 )
 """
 
@@ -49,6 +60,7 @@ class Store:
                 conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA synchronous=NORMAL")
                 conn.execute(_SCHEMA)
+                conn.execute(_TIMELINE_SCHEMA)
                 columns = {
                     row[1] for row in conn.execute("PRAGMA table_info(generations)")
                 }
@@ -267,6 +279,104 @@ class Store:
             }
         except (TypeError, ValueError) as exc:
             raise EngineError(f"store: JSON malformado en la fila {row[0]}: {exc}") from exc
+
+    def save_timeline_project(
+        self, project_id: str | None, name: str, data: dict
+    ) -> dict:
+        """Guarda o actualiza un proyecto de timeline."""
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        try:
+            data_json = json.dumps(data if isinstance(data, dict) else {})
+            with closing(self._connect()) as conn, conn:
+                pid = str(project_id).strip() if project_id else ""
+                if pid:
+                    row = conn.execute(
+                        "SELECT created_at FROM timeline_projects WHERE id = ?", (pid,)
+                    ).fetchone()
+                    if row is not None:
+                        created_at = row[0]
+                        conn.execute(
+                            "UPDATE timeline_projects SET name = ?, data_json = ?, updated_at = ? WHERE id = ?",
+                            (str(name), data_json, now, pid),
+                        )
+                        return {
+                            "id": pid,
+                            "name": str(name),
+                            "data": data,
+                            "created_at": created_at,
+                            "updated_at": now,
+                        }
+                if not pid:
+                    pid = f"tl_{uuid.uuid4().hex[:8]}"
+                conn.execute(
+                    "INSERT INTO timeline_projects (id, name, data_json, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (pid, str(name), data_json, now, now),
+                )
+                return {
+                    "id": pid,
+                    "name": str(name),
+                    "data": data,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+        except (sqlite3.Error, TypeError, ValueError) as exc:
+            raise EngineError(f"store save_timeline_project fallo: {exc}") from exc
+
+    def get_timeline_project(self, project_id: str) -> dict | None:
+        """Devuelve el proyecto con data parseado o None."""
+        try:
+            with closing(self._connect()) as conn, conn:
+                row = conn.execute(
+                    "SELECT id, name, data_json, created_at, updated_at FROM timeline_projects WHERE id = ?",
+                    (str(project_id),),
+                ).fetchone()
+                if row is None:
+                    return None
+                return {
+                    "id": row[0],
+                    "name": row[1],
+                    "data": json.loads(row[2]),
+                    "created_at": row[3],
+                    "updated_at": row[4],
+                }
+        except (sqlite3.Error, TypeError, ValueError) as exc:
+            raise EngineError(f"store get_timeline_project {project_id} fallo: {exc}") from exc
+
+    def list_timeline_projects(self, limit: int = 50) -> list[dict]:
+        """Lista proyectos de timeline ordenados por updated_at DESC."""
+        try:
+            with closing(self._connect()) as conn, conn:
+                rows = conn.execute(
+                    "SELECT id, name, data_json, created_at, updated_at FROM timeline_projects "
+                    "ORDER BY updated_at DESC LIMIT ?",
+                    (max(1, int(limit)),),
+                ).fetchall()
+                result = []
+                for row in rows:
+                    result.append(
+                        {
+                            "id": row[0],
+                            "name": row[1],
+                            "data": json.loads(row[2]),
+                            "created_at": row[3],
+                            "updated_at": row[4],
+                        }
+                    )
+                return result
+        except (sqlite3.Error, TypeError, ValueError) as exc:
+            raise EngineError(f"store list_timeline_projects fallo: {exc}") from exc
+
+    def delete_timeline_project(self, project_id: str) -> bool:
+        """Elimina un proyecto de timeline y devuelve True si existía."""
+        try:
+            with closing(self._connect()) as conn, conn:
+                cursor = conn.execute(
+                    "DELETE FROM timeline_projects WHERE id = ?", (str(project_id),)
+                )
+                return cursor.rowcount > 0
+        except sqlite3.Error as exc:
+            raise EngineError(f"store delete_timeline_project {project_id} fallo: {exc}") from exc
 
 
 __all__ = ["Store"]

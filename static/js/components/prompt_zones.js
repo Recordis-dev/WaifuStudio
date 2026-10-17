@@ -330,10 +330,11 @@ function updateGenerateState() {
     return;
   }
   button.disabled = !composePrompt() && !hasPendingZoneInput();
+  const isEn = (localStorage.getItem("waifu_lang") || "es").toLowerCase() === "en";
   if (state.activeJobsCount > 0) {
-    button.textContent = "Encolar (" + state.activeJobsCount + ")";
+    button.textContent = isEn ? "Queue (" + state.activeJobsCount + ")" : "Encolar (" + state.activeJobsCount + ")";
   } else {
-    button.textContent = "Generar";
+    button.textContent = isEn ? "Generate" : "Generar";
   }
 }
 

@@ -64,10 +64,12 @@ async function loadEditorStatus() {
 }
 
 function updateEditorControls() {
+  const hasPrompt = Boolean($("editor-prompt")?.value.trim());
+  const hasPreset = Boolean($("editor-pose-preset")?.value);
   $("btn-editor-generate").disabled =
     state.editorBusy ||
     !state.editorInstalled ||
-    !$("editor-prompt").value.trim();
+    (!hasPrompt && !hasPreset);
 }
 
 function updateEditorRefs() {
@@ -533,7 +535,8 @@ function downloadEditorResult() {
 
 async function generateEditor() {
   const prompt = $("editor-prompt").value.trim();
-  if (!prompt) {
+  const posePreset = $("editor-pose-preset")?.value || "";
+  if (!prompt && !posePreset) {
     setEditorStatus("El prompt no puede estar vacío", true);
     return;
   }
@@ -579,6 +582,16 @@ async function generateEditor() {
   }
   applyRandomSeed("editor-seed");
   const seedValue = Number($("editor-seed").value);
+
+  const recipeMode = $("editor-recipe-mode")?.value || "standard_sfw";
+  const preserveStructure = Boolean($("editor-preserve-structure")?.checked);
+  let samplerName = "euler";
+  let scheduler = "simple";
+  if (recipeMode === "pose_nsfw") {
+    samplerName = "er_sde";
+    scheduler = "beta";
+  }
+
   const payload = {
     prompt,
     mode: $("editor-mode").value,
@@ -587,7 +600,13 @@ async function generateEditor() {
     cfg,
     size: sizePayload,
     seed: Number.isFinite(seedValue) ? Math.trunc(seedValue) : 42,
+    sampler_name: samplerName,
+    scheduler,
+    preserve_structure: preserveStructure,
   };
+  if (posePreset) {
+    payload.pose_preset = posePreset;
+  }
   if (state.editorRefs.length) {
     payload.ref_images_b64 = state.editorRefs.map((ref) => ref.b64);
   }
@@ -612,7 +631,8 @@ async function generateEditor() {
   } finally {
     updateEditorControls();
     if (btn) {
-      btn.textContent = state.activeJobsCount > 0 ? `Encolar (${state.activeJobsCount})` : "Generar";
+      const isEn = (localStorage.getItem("waifu_lang") || "es").toLowerCase() === "en";
+      btn.textContent = state.activeJobsCount > 0 ? (isEn ? `Queue (${state.activeJobsCount})` : `Encolar (${state.activeJobsCount})`) : (isEn ? "Generate" : "Generar");
     }
   }
 }
@@ -621,7 +641,18 @@ async function generateEditor() {
 function initEditorTab() {
   on("editor-mode", "change", () => updateEditorMode());
   on("editor-prompt", "input", updateEditorControls);
+  on("editor-pose-preset", "change", updateEditorControls);
   on("editor-cfg", "input", updateEditorCfgNote);
+  on("editor-recipe-mode", "change", () => {
+    const mode = $("editor-recipe-mode")?.value;
+    if (mode === "pose_nsfw") {
+      $("editor-cfg").value = "3.0";
+      updateEditorCfgNote();
+    } else if (mode === "standard_sfw") {
+      $("editor-cfg").value = "1.0";
+      updateEditorCfgNote();
+    }
+  });
   on("editor-refs", "change", (event) => {
     addEditorRefs(event.target.files).catch((error) =>
       setEditorStatus(error.message, true)
@@ -675,7 +706,8 @@ function initEditorTab() {
   window.addEventListener("waifu:queue-updated", () => {
     const btn = $("btn-editor-generate");
     if (btn) {
-      btn.textContent = state.activeJobsCount > 0 ? `Encolar (${state.activeJobsCount})` : "Generar";
+      const isEn = (localStorage.getItem("waifu_lang") || "es").toLowerCase() === "en";
+      btn.textContent = state.activeJobsCount > 0 ? (isEn ? `Queue (${state.activeJobsCount})` : `Encolar (${state.activeJobsCount})`) : (isEn ? "Generate" : "Generar");
     }
   });
   on("btn-editor-compare", "click", () =>

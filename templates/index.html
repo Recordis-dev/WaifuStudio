@@ -10,6 +10,8 @@
   <link rel="stylesheet" href="/static/css/tabs/video.css">
   <link rel="stylesheet" href="/static/css/tabs/editor.css">
   <link rel="stylesheet" href="/static/css/tabs/upscaler.css">
+  <link rel="stylesheet" href="/static/css/tabs/timeline.css">
+  <link rel="stylesheet" href="/static/css/tabs/guide.css">
   <link rel="stylesheet" href="/static/css/tabs/gallery.css">
   <link rel="stylesheet" href="/static/css/tabs/test_lab.css">
 </head>
@@ -21,8 +23,10 @@
       <button id="tab-video" class="tab" type="button">Video</button>
       <button id="tab-editor" class="tab" type="button">Editor</button>
       <button id="tab-upscaler" class="tab" type="button">Upscaler</button>
+      <button id="tab-timeline" class="tab" data-tab="timeline" type="button">🎬 Estudio</button>
       <button id="tab-gallery" class="tab" type="button">Galería</button>
-      <button id="tab-test" class="tab" type="button">TEST</button>
+      <button id="tab-guide" class="tab" data-tab="guide" type="button">📖 Guía</button>
+      <button id="tab-test" class="tab hidden" data-tab="test" type="button" hidden>TEST</button>
     </nav>
     <div class="topbar-actions">
       <button id="btn-universal-reload" class="topbar-btn" type="button" title="Recargar pestaña actual" aria-label="Recargar pestaña actual">
@@ -648,6 +652,16 @@ non_diegetic_music: &lt;música instrumental o None&gt;</pre>
         <fieldset class="control-card" id="editor-block-prompt">
           <legend>2. Instrucción de Edición <button type="button" class="btn-help" data-help="Describe en lenguaje natural qué generar o modificar en la imagen con Qwen-Image 2.1.">?</button></legend>
           <label class="field">
+            <span>Preset de Pose (L0..L3)</span>
+            <select id="editor-pose-preset">
+              <option value="" selected>Ninguno (Manual / Libre)</option>
+              <option value="l0_editorial">L0 Editorial / SFW</option>
+              <option value="l1_open">L1 Open / Glamour</option>
+              <option value="l2_bold_nsfw">L2 Bold NSFW (Low Angle)</option>
+              <option value="l3_extreme">L3 Extreme Close-Up NSFW</option>
+            </select>
+          </label>
+          <label class="field">
             <span>Prompt</span>
             <textarea id="editor-prompt" rows="4" placeholder="Describe qué generar o editar..."></textarea>
           </label>
@@ -660,6 +674,19 @@ non_diegetic_music: &lt;música instrumental o None&gt;</pre>
         <!-- BLOQUE 3: Configuración y Dimensiones -->
         <fieldset class="control-card" id="editor-block-params">
           <legend>3. Configuración y Dimensiones <button type="button" class="btn-help" data-help="Tamaño Original (1ª ref) y CFG=1 son óptimos para edición precisa certificada con Qwen-Image 2.1.">?</button></legend>
+          <div class="grid-2">
+            <label class="field">
+              <span>Receta / Modo</span>
+              <select id="editor-recipe-mode">
+                <option value="standard_sfw" selected>Estándar SFW (Euler, CFG 1.0)</option>
+                <option value="pose_nsfw">Pose &amp; NSFW Pro (ER-SDE + Beta, CFG 3.0)</option>
+              </select>
+            </label>
+            <label class="field field-inline" style="align-self: center; margin-top: 0.5rem;">
+              <input id="editor-preserve-structure" type="checkbox">
+              <span style="font-size: 0.8rem; cursor: pointer;">Preservar estructura (Latent Ref)</span>
+            </label>
+          </div>
           <div id="editor-section-size" class="section-subblock">
             <div class="grid-2">
               <label class="field">
@@ -804,6 +831,21 @@ non_diegetic_music: &lt;música instrumental o None&gt;</pre>
           </label>
           <p class="field-hint">RealESRGAN x2 duplica el tamaño; aplica a la imagen o al vídeo (conservando fps y audio del origen).</p>
 
+          <label class="field" id="upscale-mode-field">
+            <span>Modo de Escalado</span>
+            <select id="upscale-mode">
+              <option value="fast">Rápido (GAN)</option>
+              <option value="hires">Hires Fix (Difusión)</option>
+              <option value="qwen_remaster">Qwen Remaster (2K)</option>
+            </select>
+          </label>
+
+          <label class="field hidden" id="upscale-denoise-field">
+            <span>Fuerza Difusión (Denoise)</span>
+            <input id="upscale-denoise" type="number" min="0.10" max="0.50" step="0.05" value="0.30">
+            <p class="field-hint">Nivel de reinterpretación creativa (0.10 sutil a 0.50 fuerte).</p>
+          </label>
+
           <div class="grid-2">
             <label class="field" id="upscale-passes-field">
               <span>Escalado</span>
@@ -822,7 +864,24 @@ non_diegetic_music: &lt;música instrumental o None&gt;</pre>
               </select>
             </label>
           </div>
+
+          <label class="field" id="upscale-sharpen-method-field">
+            <span>Método de Nitidez</span>
+            <select id="upscale-sharpen-method">
+              <option value="legacy">Legacy (ImageSharpen)</option>
+              <option value="rcas">RCAS (Robust Contrast)</option>
+              <option value="adaptive_usm">Adaptive USM</option>
+            </select>
+          </label>
           <p class="field-hint">Nitidez extra tras la ampliación (solo imagen).</p>
+
+          <label class="field hidden" id="upscale-rife-model-field">
+            <span>Interpolación RIFE (Opcional)</span>
+            <select id="upscale-rife-model">
+              <option value="">Sin interpolación</option>
+            </select>
+            <p class="field-hint">Duplica los fotogramas (2x fps) durante el escalado de vídeo.</p>
+          </label>
 
           <label class="field hidden" id="upscale-ckpt-field">
             <span>Ckpt RIFE</span>
@@ -873,6 +932,108 @@ non_diegetic_music: &lt;música instrumental o None&gt;</pre>
       </section>
     </section>
 
+    <section id="panel-timeline" class="panel tab-canonical-layout" hidden>
+      <aside class="controls tab-sidebar timeline-sidebar">
+        <!-- BLOQUE 1: Proyecto & Exportación -->
+        <fieldset class="control-card" id="timeline-card-project">
+          <legend>1. Proyecto &amp; Exportación</legend>
+          <label class="field">
+            <span>Proyecto</span>
+            <select id="timeline-project-select">
+              <option value="">(Nuevo proyecto)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Nombre</span>
+            <input id="timeline-project-name" type="text" value="Mi Secuencia" placeholder="Nombre del proyecto...">
+          </label>
+          <div class="grid-2">
+            <button id="btn-timeline-new" class="secondary" type="button">Nuevo</button>
+            <button id="btn-timeline-save" class="secondary" type="button">Guardar</button>
+          </div>
+          <button id="btn-timeline-export" class="primary" type="button">🎬 Exportar MP4</button>
+          <p id="timeline-status" class="field-hint"></p>
+        </fieldset>
+
+        <!-- BLOQUE 2: Biblioteca de Medios (Galería) -->
+        <fieldset class="control-card" id="timeline-card-media">
+          <legend>2. Biblioteca de Medios</legend>
+          <div class="control-inline">
+            <label class="field" style="flex:1;">
+              <select id="timeline-media-filter">
+                <option value="">Todos</option>
+                <option value="video">Vídeos</option>
+                <option value="image">Imágenes</option>
+              </select>
+            </label>
+            <button id="btn-timeline-refresh-media" type="button" class="btn-refresh" title="Refrescar medios">🔄</button>
+          </div>
+          <div id="timeline-media-shelf" class="timeline-media-shelf"></div>
+          <p class="field-hint">Usa el botón '+' en cada miniatura para añadir a la secuencia.</p>
+        </fieldset>
+
+        <!-- BLOQUE 3: Generar en Timeline con IA -->
+        <fieldset class="control-card" id="timeline-card-ai">
+          <legend>3. Generar en Timeline con IA</legend>
+          <label class="field">
+            <span>Acción IA</span>
+            <select id="timeline-ai-action">
+              <option value="continue_i2v">Continuar último clip (I2V desde último frame)</option>
+              <option value="bridge_flf2v">Puente entre 2 clips (FLF2V inicio-&gt;fin)</option>
+              <option value="insert_image">Generar e insertar Imagen (Anima/SDXL)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Prompt de acción</span>
+            <textarea id="timeline-ai-prompt" rows="3" placeholder="Describe la acción (ej: el personaje empieza a correr y salta un obstáculo)..."></textarea>
+          </label>
+          <label class="field">
+            <span>Duración vídeo</span>
+            <select id="timeline-ai-seconds">
+              <option value="5" selected>5s (Rápido)</option>
+              <option value="8">8s (Estándar)</option>
+              <option value="10">10s (Largo)</option>
+            </select>
+          </label>
+          <button id="btn-timeline-ai-generate" class="primary" type="button">✨ Generar e Insertar en Timeline</button>
+          <p id="timeline-ai-status" class="field-hint"></p>
+        </fieldset>
+      </aside>
+
+      <section class="gallery-panel tab-viewport timeline-viewport">
+        <!-- Visor Previsualización -->
+        <div class="timeline-preview-wrap" id="timeline-preview-wrap">
+          <video id="timeline-preview-video" controls playsinline></video>
+          <div class="timeline-preview-controls">
+            <button id="btn-timeline-play-all" class="secondary" type="button">▶ Reproducir Secuencia</button>
+            <span id="timeline-total-duration">Duración total: 0.0s (0 clips)</span>
+          </div>
+        </div>
+
+        <!-- Área de Pistas -->
+        <div class="timeline-tracks-container" id="timeline-tracks-container">
+          <div class="timeline-track-header">
+            <span>Pista 1 — Vídeo e Imagen</span>
+            <span id="timeline-track-count">0 clips</span>
+          </div>
+          <div id="timeline-track-video" class="timeline-track">
+            <div id="timeline-empty-hint" style="color:#777; font-size:12px; margin:auto;">Añade clips desde la Biblioteca o genera con IA para empezar.</div>
+          </div>
+
+          <div class="timeline-track-header" style="margin-top: 6px;">
+            <span>Pista 2 — Sonido Externo / Música</span>
+            <div>
+              <button id="btn-timeline-add-audio" class="secondary" type="button" style="font-size:11px; padding:2px 8px;">+ Subir Audio</button>
+              <input type="file" id="timeline-audio-input" accept="audio/*" hidden>
+            </div>
+          </div>
+          <div id="timeline-track-audio" class="timeline-track timeline-audio-track">
+            <div id="timeline-audio-empty-hint" style="color:#666; font-size:11px; margin:auto;">Sin pista de audio externa (opcional).</div>
+          </div>
+        </div>
+      </section>
+    </section>
+
     <section id="panel-gallery" class="panel">
       <div class="gallery-toolbar">
         <label class="field gallery-filter-field">
@@ -902,7 +1063,192 @@ non_diegetic_music: &lt;música instrumental o None&gt;</pre>
       </div>
     </section>
 
-    <section id="panel-test" class="panel tab-canonical-layout">
+    <section id="panel-guide" class="panel" hidden>
+      <!-- Hero Banner Superior -->
+      <div class="guide-hero">
+        <h2>Bienvenido a WaifuStudio — Guía Interactiva de Producción</h2>
+        <p>Flujo integral de creación: desde el diseño conceptual de tu personaje hasta la animación de episodios de más de 3 minutos y escalado cinematográfico en 2K a 60 FPS, 100% en local sin censura.</p>
+        <div class="guide-quickstart-grid">
+          <div class="guide-step-card">
+            <h3>🎨 Paso 1: Crea tu Personaje</h3>
+            <p>Diseña tu waifu con Anima 2.9B o SDXL, guarda su identidad en OC Maker y genera su hoja de vistas.</p>
+            <button type="button" class="btn small" data-goto-tab="image">Ir a Imagen →</button>
+          </div>
+          <div class="guide-step-card">
+            <h3>🎞️ Paso 2: Anima en 8 Pasos</h3>
+            <p>Genera clips con H3 VideoDeltaNet en segundos usando I2V, o mantén su identidad con Ref2VA.</p>
+            <button type="button" class="btn small" data-goto-tab="video">Ir a Vídeo →</button>
+          </div>
+          <div class="guide-step-card">
+            <h3>🎬 Paso 3: Monta en Estudio</h3>
+            <p>Organiza tus clips en la línea de tiempo, añade música y usa 'Continuar I2V' para secuencias largas.</p>
+            <button type="button" class="btn small" data-goto-tab="timeline">Ir a Estudio →</button>
+          </div>
+          <div class="guide-step-card">
+            <h3>🔍 Paso 4: Escala a 2K / 60 FPS</h3>
+            <p>Aplica Upscaler Pro 2.0 con RCAS y RIFE para fluidez cinematográfica a 60 fotogramas por segundo.</p>
+            <button type="button" class="btn small" data-goto-tab="upscaler">Ir a Upscaler →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Barra de Filtros y Búsqueda -->
+      <div class="guide-toolbar">
+        <div class="guide-nav" id="guide-nav">
+          <button type="button" class="guide-nav-btn active" data-filter="all">Todos los Módulos</button>
+          <button type="button" class="guide-nav-btn" data-filter="image">1. Imagen &amp; OC</button>
+          <button type="button" class="guide-nav-btn" data-filter="video">2. Vídeo H3</button>
+          <button type="button" class="guide-nav-btn" data-filter="editor">3. Editor Qwen</button>
+          <button type="button" class="guide-nav-btn" data-filter="timeline">4. Estudio Timeline</button>
+          <button type="button" class="guide-nav-btn" data-filter="upscale">5. Upscaler Pro</button>
+          <button type="button" class="guide-nav-btn" data-filter="faq">FAQ &amp; Trucos</button>
+        </div>
+        <input id="guide-search" type="search" placeholder="Buscar en la guía...">
+      </div>
+
+      <!-- SECCIÓN 1: Imagen & OC Maker -->
+      <article class="guide-section" data-category="image">
+        <h3>1. 🎨 Imagen &amp; OC Maker (Diseño de Personajes)</h3>
+        <p>WaifuStudio combina dos familias de modelos para generación de imagen fija:</p>
+        <ul>
+          <li><strong>Anima 2.9B (SD3/Turbo)</strong>: Motor nativo optimizado para RTX 3060. Extremadamente rápido (~3-5 s por imagen), responde con gran precisión a tags Danbooru (ej. <code>1girl, solo, blue_hair, twintails</code>) y opera idealmente con 14 pasos y CFG 4.0.</li>
+          <li><strong>SDXL / Illustrious</strong>: Motor clásico para estilos artísticos densos e ilustraciones complejas. Detecta automáticamente la arquitectura de tensores al cargar LoRAs.</li>
+        </ul>
+        <p><strong>Zonas de Prompt</strong>: Puedes estructurar tu prompt dividiéndolo en bloques modulares (<em>Sujeto, Atuendo, Entorno/Fondo, NSFW y Acción</em>) para evitar que los tags se contaminen entre sí.</p>
+        <p><strong>OC Maker</strong>: Guarda a tu personaje con nombre, rasgos fijos e imágenes de referencia. Desde el modal de OC Maker puedes generar automáticamente una <em>Character Sheet</em> (vistas frontal, perfil y espalda) y lanzar el entrenamiento de tu propio <strong>LoRA dedicado</strong> en segundo plano.</p>
+      </article>
+
+      <!-- SECCIÓN 2: Vídeo H3 -->
+      <article class="guide-section" data-category="video">
+        <h3>2. 🎞️ Vídeo H3 (I2V / FLF2V / Ref2VA / V2V)</h3>
+        <p>El motor de vídeo de WaifuStudio utiliza <strong>H3 (Wan 2.1)</strong> potenciado con <strong>VideoDeltaNet (VDN)</strong> en 8 pasos, permitiendo generar animaciones fluidas en GPU de 12 GB VRAM en tiempo récord.</p>
+        <table class="guide-table">
+          <thead>
+            <tr>
+              <th>Modo</th>
+              <th>Entrada</th>
+              <th>Propósito</th>
+              <th>Consejo Pro</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>I2V</strong></td>
+              <td>1 Imagen</td>
+              <td>Animar una foto fija con movimiento natural.</td>
+              <td>Describe la acción en presente (ej. <em>"waves hair, smiles softly, turns head"</em>).</td>
+            </tr>
+            <tr>
+              <td><strong>FLF2V</strong></td>
+              <td>2 Imágenes (Inicio y Fin)</td>
+              <td>Crear una transición o viaje entre dos poses/escenas.</td>
+              <td>Usa imágenes con composición y fondo similares para máxima coherencia.</td>
+            </tr>
+            <tr>
+              <td><strong>Ref2VA</strong></td>
+              <td>Hasta 4 Fotos + Sonido</td>
+              <td>Mantener la identidad exacta del OC con audio sincronizado.</td>
+              <td>Incluye fotos del personaje en distintas iluminaciones.</td>
+            </tr>
+            <tr>
+              <td><strong>V2V</strong></td>
+              <td>1 Vídeo existente</td>
+              <td>Redibujar el estilo artístico de un vídeo grabado.</td>
+              <td>Ajusta la fuerza de denoise entre 0.40 y 0.65 para no perder la silueta.</td>
+            </tr>
+          </tbody>
+        </table>
+        <p><strong>VideoDeltaNet (8 pasos)</strong>: Reduce el tiempo de cálculo de ~6 minutos a solo ~60 segundos manteniendo nitidez impecable. Mantén el botón VDN siempre activo en configuraciones de 12 GB.</p>
+      </article>
+
+      <!-- SECCIÓN 3: Editor Qwen 2.1 -->
+      <article class="guide-section" data-category="editor">
+        <h3>3. 🖌️ Editor Qwen 2.1 (Inpaint &amp; Presets de Pose)</h3>
+        <p>El Editor integra el modelo de visión y difusión <strong>Qwen 2.1</strong> para edición quirúrgica:</p>
+        <ul>
+          <li><strong>Inpainting con Máscara</strong>: Pinta con el pincel sobre cualquier área de la imagen para cambiar ropa, alterar expresiones faciales o corregir detalles anatómicos sin tocar el resto de la ilustración.</li>
+          <li><strong>Receta Pose &amp; NSFW Pro</strong>: Emplea el sampler <code>er_sde</code> con scheduler <code>beta</code> y CFG 3.0 para alterar poses manteniendo la estructura corporal íntegra.</li>
+          <li><strong>Presets de Pose L0 a L3</strong>:
+            <ul>
+              <li><code>L0 (Sutil)</code>: Ajustes microscópicos de postura y mirada.</li>
+              <li><code>L1 (Moderada)</code>: Giros de cabeza y cambios suaves de extremidades.</li>
+              <li><code>L2 (Expansiva)</code>: Poses dinámicas de cuerpo entero.</li>
+              <li><code>L3 (Extrema)</code>: Reconfiguración anatómica radical y ángulos complejos.</li>
+            </ul>
+          </li>
+        </ul>
+      </article>
+
+      <!-- SECCIÓN 4: Estudio Timeline -->
+      <article class="guide-section" data-category="timeline">
+        <h3>4. 🎬 Estudio / Timeline (Montaje de Miniseries)</h3>
+        <p>La pestaña Estudio convierte a WaifuStudio en un entorno NLE (Non-Linear Editor) completo para crear episodios de más de 3 minutos:</p>
+        <ul>
+          <li><strong>Pista 1 (Vídeo e Imagen)</strong>: Añade clips de tu galería o genera directamente con IA. Cada clip cuenta con control de duración, selector de transiciones (Fade, Zoom In, Zoom Out) y botón de silenciar (<code>🔇</code>).</li>
+          <li><strong>Continuar I2V (Secuencias Infinitas)</strong>: Al hacer clic en <em>"⏭️ I2V"</em> en cualquier clip, la app extrae automáticamente su último fotograma y lo anima con la acción descrita, encadenando escenas sucesivas sin límite de tiempo.</li>
+          <li><strong>Pista 2 (Sonido y Música)</strong>: Sube archivos de audio (.mp3, .wav), colócalos en el segundo exacto que desees y gradúa su volumen para añadir bandas sonoras y efectos.</li>
+          <li><strong>Exportación Directa</strong>: El botón <em>"🎬 Exportar MP4"</em> procesa todos los segmentos y mezcla las pistas en un único archivo de alta calidad mediante FFmpeg.</li>
+        </ul>
+      </article>
+
+      <!-- SECCIÓN 5: Upscaler Pro 2.0 -->
+      <article class="guide-section" data-category="upscale">
+        <h3>5. 🔍 Upscaler Pro 2.0 &amp; Galería</h3>
+        <p>El motor de escalado eleva tus creaciones a resolución 2K y 60 FPS:</p>
+        <ul>
+          <li><strong>Modo Rápido (GAN)</strong>: Modelos <code>4x-AnimeSharp</code> y <code>4x-UltraSharp</code> para ampliar ×2 o ×4 en 2 segundos con bordes definidos.</li>
+          <li><strong>Hires Fix (Difusión Anima)</strong>: Redibuja micro-detalles reales (pestañas individuales, brillo en el iris, hebras de cabello) con un denoise recomendado de <code>0.25</code> a <code>0.30</code>.</li>
+          <li><strong>Qwen Remaster</strong>: Reconstrucción ultra-detallada a 2048px preservando el estilo original.</li>
+          <li><strong>Enfoque AMD FidelityFX CAS (RCAS)</strong>: Aplica nitidez contrastada adaptativa sin generar halos blancos desagradables.</li>
+          <li><strong>Interpolación RIFE (Vídeo 60 FPS)</strong>: Multiplica los fotogramas de tus vídeos a ×2 o ×4 fps conservando el audio intacto para máxima fluidez anime.</li>
+        </ul>
+      </article>
+
+      <!-- SECCIÓN 6: FAQ & Trucos -->
+      <article class="guide-section" data-category="faq">
+        <h3>💡 Recetario de Trucos Pro &amp; Preguntas Frecuentes</h3>
+        
+        <div class="guide-accordion">
+          <div class="guide-acc-header">
+            <span>¿Cómo evitar errores de memoria (CUDA Out of Memory) en la RTX 3060?</span>
+            <span>▼</span>
+          </div>
+          <div class="guide-acc-body">
+            WaifuStudio gestiona la VRAM con inferencia monohilo FIFO. Para no saturar los 12 GB:
+            1. En Vídeo H3 mantén siempre activado <strong>VDN 8 pasos</strong> y resolución 768p.
+            2. Evita generar vídeos de más de 10 segundos en una sola pasada; en su lugar, genera clips de 5s y únelos en la pestaña <strong>Estudio Timeline</strong> con el botón <em>"Continuar I2V"</em>.
+            3. El modelo de subtitulado Qwen 2.5 opera en CPU, liberando el 100% de la GPU para renderizado.
+          </div>
+        </div>
+
+        <div class="guide-accordion">
+          <div class="guide-acc-header">
+            <span>¿Cómo lograr que mi personaje siempre tenga la misma cara y peinado?</span>
+            <span>▼</span>
+          </div>
+          <div class="guide-acc-body">
+            1. En la pestaña <strong>Imagen</strong>, abre <strong>OC Maker</strong> y crea una ficha para tu personaje con sus rasgos clave (ej. color de ojos, accesorios, peinado).
+            2. Selecciona tu OC en el menú desplegable antes de generar.
+            3. Genera varias poses y usa la herramienta de entrenamiento para crear su propio <strong>LoRA dedicado</strong>.
+            4. En la pestaña <strong>Vídeo</strong>, usa el modo <strong>Ref2VA</strong> adjuntando 2 a 4 fotos de tu OC como referencia.
+          </div>
+        </div>
+
+        <div class="guide-accordion">
+          <div class="guide-acc-header">
+            <span>¿Por qué mis vídeos salen estáticos o con poco movimiento?</span>
+            <span>▼</span>
+          </div>
+          <div class="guide-acc-body">
+            En los modelos I2V basados en Wan 2.1 / H3, el movimiento proviene del prompt:
+            1. Usa verbos dinámicos en inglés: <em>"running towards camera, intense action, wind blowing hair strongly, dramatic expression"</em>.
+            2. En el panel de Vídeo, puedes usar el selector de presets H3 para aplicar movimientos de cámara como <em>Zoom In, Pan Left, Tilt Up o Dynamic Action</em>.
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section id="panel-test" class="panel tab-canonical-layout" hidden>
       <aside class="controls tab-sidebar test-sidebar">
         <!-- BLOQUE 1: Selector Dual de Resolución -->
         <fieldset class="control-card" id="test-card-res">

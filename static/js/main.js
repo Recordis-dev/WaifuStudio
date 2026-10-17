@@ -24,30 +24,56 @@ import { initGalleryTab, loadGalleryTab, closeGalleryModal, closeCustomTagsModal
 import { initHeader } from "./components/header.js";
 import { initTooltipHelp } from "./components/tooltip_help.js";
 import { initTestLab } from "./tabs/test_lab.js";
+import { initTimelineTab, refreshTimelineMedia } from "./tabs/timeline.js";
+import { initGuideTab } from "./tabs/guide.js";
+import { initI18n } from "./i18n.js";
 
 function switchTab(tab) {
   const image = tab === "image";
   const video = tab === "video";
   const editor = tab === "editor";
   const upscaler = tab === "upscaler";
+  const timeline = tab === "timeline";
   const gallery = tab === "gallery";
+  const guide = tab === "guide";
   const test = tab === "test";
   $("tab-image").classList.toggle("active", image);
   $("tab-video").classList.toggle("active", video);
   $("tab-editor").classList.toggle("active", editor);
   $("tab-upscaler").classList.toggle("active", upscaler);
+  const tabTimelineEl = $("tab-timeline");
+  if (tabTimelineEl) tabTimelineEl.classList.toggle("active", timeline);
   $("tab-gallery").classList.toggle("active", gallery);
+  const tabGuideEl = $("tab-guide");
+  if (tabGuideEl) tabGuideEl.classList.toggle("active", guide);
   const tabTestEl = $("tab-test");
   if (tabTestEl) tabTestEl.classList.toggle("active", test);
+
   $("panel-image").classList.toggle("active", image);
   $("panel-video").classList.toggle("active", video);
   $("panel-editor").classList.toggle("active", editor);
   $("panel-upscaler").classList.toggle("active", upscaler);
+  const panelTimelineEl = $("panel-timeline");
+  if (panelTimelineEl) {
+    panelTimelineEl.classList.toggle("active", timeline);
+    panelTimelineEl.hidden = !timeline;
+  }
   $("panel-gallery").classList.toggle("active", gallery);
+  const panelGuideEl = $("panel-guide");
+  if (panelGuideEl) {
+    panelGuideEl.classList.toggle("active", guide);
+    panelGuideEl.hidden = !guide;
+  }
   const panelTestEl = $("panel-test");
-  if (panelTestEl) panelTestEl.classList.toggle("active", test);
+  if (panelTestEl) {
+    panelTestEl.classList.toggle("active", test);
+    panelTestEl.hidden = !test;
+  }
   if (test) {
     initTestLab();
+  }
+  if (timeline) {
+    refreshTimelineMedia();
   }
   if (image) {
     loadImageViewer().catch((error) => setStatus(error.message, true));
@@ -82,13 +108,14 @@ const REQUIRED_IDS = [
   "video-preview", "video-preview-empty", "video-preview-info", "video-prev-page", "video-next-page", "video-page-info",
   "video-thumbs", "btn-toggle-video-thumbs", "btn-new-video", "editor-prompt", "editor-refs", "editor-refs-field",
   "editor-refs-hint", "editor-size", "editor-manual-size", "editor-negative", "editor-steps", "editor-cfg",
+  "editor-recipe-mode", "editor-pose-preset", "editor-preserve-structure",
   "editor-cfg-note", "editor-result", "editor-preview", "editor-preview-img", "editor-preview-empty", "btn-editor-compare",
   "btn-toggle-editor-thumbs", "editor-compare", "editor-compare-stage", "editor-compare-before", "editor-compare-after", "editor-compare-handle",
   "editor-compare-ratio", "btn-editor-generate", "btn-editor-open-gallery", "btn-editor-edit-result", "btn-editor-download", "editor-gallery-thumbs",
   "editor-gallery-prev", "editor-gallery-next", "editor-gallery-info", "panel-upscaler", "upscale-kind", "upscale-source-field",
-  "upscale-source-label", "upscale-source-info", "upscale-file-field", "upscale-file", "upscale-passes-field", "upscale-passes",
-  "upscale-sharpen-field", "upscale-sharpen", "upscale-gallery-thumbs", "upscale-gallery-prev", "upscale-gallery-next", "upscale-gallery-info",
-  "upscale-model-field", "upscale-model", "upscale-model-note", "upscale-ckpt-field", "upscale-ckpt", "upscale-ckpt-note",
+  "upscale-source-label", "upscale-source-info", "upscale-file-field", "upscale-file", "upscale-mode", "upscale-denoise", "upscale-passes-field", "upscale-passes",
+  "upscale-sharpen-field", "upscale-sharpen", "upscale-sharpen-method", "upscale-gallery-thumbs", "upscale-gallery-prev", "upscale-gallery-next", "upscale-gallery-info",
+  "upscale-model-field", "upscale-model", "upscale-model-note", "upscale-rife-model", "upscale-ckpt-field", "upscale-ckpt", "upscale-ckpt-note",
   "upscale-multiplier-field", "upscale-multiplier", "btn-upscale", "btn-upscale-cancel", "upscale-status", "upscale-progress",
   "upscale-progress-fill", "upscale-progress-text", "upscale-preview", "upscale-preview-img", "upscale-preview-video", "upscale-preview-empty",
   "btn-upscale-compare", "upscale-compare", "upscale-compare-stage", "upscale-compare-before", "upscale-compare-after", "upscale-compare-handle", "upscale-compare-ratio",
@@ -125,7 +152,15 @@ function bind() {
   on("tab-video", "click", () => switchTab("video"));
   on("tab-editor", "click", () => { switchTab("editor"); updateEditorMode(); });
   on("tab-upscaler", "click", () => switchTab("upscaler"));
+  const tabTimeline = $("tab-timeline");
+  if (tabTimeline) {
+    on("tab-timeline", "click", () => switchTab("timeline"));
+  }
   on("tab-gallery", "click", () => switchTab("gallery"));
+  const tabGuide = $("tab-guide");
+  if (tabGuide) {
+    on("tab-guide", "click", () => switchTab("guide"));
+  }
   const tabTest = $("tab-test");
   if (tabTest) {
     on("tab-test", "click", () => switchTab("test"));
@@ -145,11 +180,11 @@ function bind() {
       closeOcModal();
     }
   });
-  initHeader(); initTooltipHelp();
+  initHeader(); initI18n(); initTooltipHelp();
   initCompare(); initLightbox(); initPromptZones(); initPromptPopover();
   initOcPicker(); initOcTrain(); initLoras(); initVision(); initPreprompts();
   initImageViewer(); initImageTab(); initVideoTab(); initVideoH3();
-  initEditorTab(); initUpscalerTab(); initGalleryTab();
+  initEditorTab(); initUpscalerTab(); initTimelineTab(); initGalleryTab(); initGuideTab();
   return missing.length === 0;
 }
 
