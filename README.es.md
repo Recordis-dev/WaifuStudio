@@ -1,120 +1,106 @@
-# ✨ WaifuStudio v2.0 — Estudio Creativo Integral de Anime & Waifus en Local
+# ✨ WaifuStudio v2.0 — Estudio Local de Anime & Waifus (Proyecto Personal)
 
 [![Versión](https://img.shields.io/badge/versión-2.0.0-ff4081.svg)](https://github.com/gusnion/WaifuStudio)
 [![Licencia: MIT](https://img.shields.io/badge/Licencia-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![GPU](https://img.shields.io/badge/GPU-Optimizada%20RTX%203060%2012GB-76b900.svg)](https://www.nvidia.com)
-[![Motor](https://img.shields.io/badge/Motor-ComfyUI%20Autónomo-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
-[![Privacidad](https://img.shields.io/badge/Privacidad-100%25%20Local%20%7C%20Sin%20Telemetría-success.svg)]()
-[![Censura](https://img.shields.io/badge/Censura-Cero%20%2F%20Sin%20Censura-crimson.svg)]()
+[![Hardware Testeado](https://img.shields.io/badge/Testeado%20en-RTX%203060%2012GB-76b900.svg)](https://www.nvidia.com)
+[![Motor](https://img.shields.io/badge/Motor-ComfyUI%20Backend-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
+[![Privacidad](https://img.shields.io/badge/Privacidad-100%25%20Local-success.svg)]()
 
 > 🌐 [English](README.md) | **Español**
 
 ---
 
-**WaifuStudio** es una suite creativa local de nueva generación diseñada para creadores de anime, narradores y artistas digitales.  
-Crea personajes consistentes, genera ilustraciones en segundos, anima vídeos cinematográficos en 8 pasos, edita poses con precisión milimétrica, monta episodios completos de varios minutos en la línea de tiempo y escala a **2K a 60 FPS** — todo ejecutándose **100% en local, privado, gratuito y sin censura** en una sola GPU de consumo (RTX 3060 12GB).
+**WaifuStudio** es un proyecto personal que desarrollo en mi tiempo libre para reunir en una sola interfaz web local la generación de imágenes anime, creación de hojas de personaje (OC), generación de vídeo con **MinimaxH3 (VideoDeltaNet / VDN)**, edición con **Qwen 2.1**, reescalado y un secuenciador básico de línea de tiempo, usando **ComfyUI** como motor interno.
+
+> [!WARNING]
+> **Aviso Importante — Sin Garantías y Posibles Bugs**:
+> Esta es una aplicación hecha en mi tiempo libre y se comparte **"TAL CUAL" (AS IS)**, sin garantías de ningún tipo. Nada está garantizado: **pueden existir bugs, fallos o comportamientos inesperados** (especialmente en configuraciones de hardware distintas a la mía). Úsala bajo tu propia responsabilidad.
 
 ---
 
-## 🎯 ¿Por qué WaifuStudio?
+## 🎯 Resumen de Funciones
 
-| Característica | Lo que la hace única |
+| Módulo | Qué hace realmente |
 |---|---|
-| ⚡ **Instalador Hermético en 1 Clic** | Ejecuta `INSTALAR.bat` y `ABRIR_APP.bat`. Cero conflictos de Conda o Python global; despliega un entorno portátil aislado. |
-| 🎭 **Personajes Consistentes (OC Maker)** | Guarda rasgos faciales, genera Hojas de Personaje en 1 clic (Frente / Perfil / Espalda) y entrena LoRAs dedicados en segundo plano. |
-| 🧠 **Asistente de Prompts Inteligente** | 91.357 tags Danbooru indexados en SQLite FTS5 + LLM local en CPU + Prompts en lenguaje natural de 7 bloques para Qwen. |
-| 🎞️ **Vídeo H3 en 8 Pasos (VideoDeltaNet)** | Animación fluida con Wan 2.1 en ~60 s en lugar de 6 minutos, con audio nativo y presets de movimiento de cámara. |
-| 🎬 **Estudio Timeline NLE Generativo** | Editor de vídeo y audio multi-pista diseñado para montar miniseries de más de 3 minutos con encadenado "Continuar I2V". |
-| 🔍 **Upscaler Pro 2.0 & RIFE a 60 FPS** | Pipeline de doble fase: GAN rápido, Difusión Anima Hires.fix, Remaster Qwen 2K, nitidez AMD FidelityFX RCAS e interpolación RIFE. |
+| ⚡ **Instalador Portátil (Windows)** | `INSTALAR.bat` y `ABRIR_APP.bat` configuran un entorno portátil aislado de Python + ComfyUI en Windows y descargan los modelos configurados. |
+| 🎭 **Gestor de Personajes (OC Maker)** | Guarda rasgos de personajes, genera hojas de referencia (Frente / Perfil / Espalda) y permite lanzar entrenamientos de LoRA en local. |
+| 🧠 **Asistente de Prompts** | 91.357 tags de Danbooru indexados en SQLite FTS5 + asistente LLM local opcional en CPU (`Qwen3.5-9B` GGUF) para expandir tags o describir imágenes. |
+| 🎞️ **Vídeo H3 (`MinimaxH3 VDN`)** | Generación de vídeo en 8 pasos mediante **MinimaxH3 VideoDeltaNet (VDN)** con audio nativo y presets de cámara (`I2V`, `FLF2V`, `Ref2VA`, `V2V`). |
+| 🎬 **Estudio Timeline Básico** | Secuenciador web sencillo para unir clips de vídeo e imágenes estáticas con una pista de audio externa usando FFmpeg, además de atajos para continuar clips con `I2V` / `FLF2V`. |
+| 🔍 **Upscaler y RIFE FPS** | Escalado de imagen y vídeo (`RealESRGAN`, `AnimeSharp`, `UltraSharp`), pase opcional de difusión (`Anima` / `Qwen 2.1`), nitidez `RCAS` e interpolación RIFE. |
 
 ---
 
-## 🚀 Inicio Rápido en 3 Clics
+## 🚀 Inicio Rápido (Windows)
 
 1. **Clona o Descarga** este repositorio en tu disco (ej. `E:\IA\WAIFU`).
-2. **Doble clic en `INSTALAR.bat`**: Configura dependencias portátiles, el motor ComfyUI y descarga los modelos esenciales automáticamente.
-3. **Doble clic en `ABRIR_APP.bat`**: Inicia el servidor y abre tu navegador en `http://127.0.0.1:8765`.
+2. **Ejecuta `INSTALAR.bat`**: Configura el entorno portátil de Python, ComfyUI, nodos personalizados y descarga los pesos necesarios.
+3. **Ejecuta `ABRIR_APP.bat`**: Levanta el servidor local y abre `http://127.0.0.1:8765` en tu navegador.
 
-> 💡 **¿Primera vez en el estudio?** Abre la pestaña integrada **📖 Guía** dentro de la app para ver tutoriales interactivos paso a paso, recetarios de prompt y consejos de optimización de VRAM.
+> 💡 **Guía Integrada**: Dentro de la app tienes la pestaña **📖 Guía** con explicaciones de uso de cada pestaña y sus controles.
 
 ---
 
-## 🎬 Tour por el Estudio: 7 Espacios de Producción
+## 🎬 Pestañas de Trabajo
 
 ### 1. 🎨 Imagen & OC Maker
-- **Arquitectura de Motor Dual**: Motor nativo **Anima 2.9B** (SD3/Turbo en ~3-5 s) y checkpoints **SDXL / Illustrious** con detección automática de arquitectura de tensores.
-- **Zonas de Prompt**: División modular de tags (*Sujeto, Atuendo, Entorno/Fondo, NSFW y Composición*) que previene la mezcla accidental de conceptos.
-- **LoraLoader Dual**: Ponderación transparente tanto para modelos UNET puros como para checkpoints estándar.
-- **Visión Multimodal (WD14 + LLM)**: Conversión en 1 clic de imágenes de referencia en tags Danbooru distribuidos automáticamente por zonas.
+- **Dos Familias de Modelos**: Soporta modelos **Anima 2.9B** y checkpoints **SDXL / Illustrious** con detección automática de arquitectura.
+- **Zonas de Prompt**: Separa los tags en *Sujeto, Atuendo, Fondo, NSFW y Composición* para mantener el prompt ordenado.
+- **LoraLoader Dual**: Carga LoRAs tanto en modelos UNET (`Anima`) como en Checkpoints completos (`SDXL/Illustrious`).
+- **Imagen a Tags**: Extrae tags desde una imagen de referencia usando WD14 y/o el LLM local en CPU.
 
-### 2. 🎞️ Vídeo H3 (Wan 2.1 + VideoDeltaNet)
-Genera secuencias de animación anime de alta fidelidad en solo **8 pasos**:
-- **I2V (Imagen a Vídeo)**: Da vida a cualquier ilustración fija con movimiento orgánico.
-- **FLF2V (Primer y Último Frame)**: Genera transiciones cinemáticas continuas entre dos fotogramas clave.
-- **Ref2VA (Referencia a Vídeo y Audio)**: Conserva la identidad exacta del personaje con hasta 4 retratos y sonido sincronizado.
-- **V2V (Vídeo a Vídeo)**: Redibuja y estiliza el movimiento y la acción de un vídeo real o grabado.
-- **Presets de Cámara**: Movimientos de plano listos para usar (Zoom In, Pan Left, Tilt Up, Dynamic Action).
+### 2. 🎞️ Vídeo H3 (MinimaxH3 VDN — VideoDeltaNet)
+Genera clips de vídeo anime en **8 pasos** usando **MinimaxH3 VideoDeltaNet (VDN)**:
+- **I2V (Imagen a Vídeo)**: Anima una ilustración estática inicial.
+- **FLF2V (Primer a Último Fotograma)**: Genera la transición entre una imagen inicial y una final.
+- **Ref2VA (Referencia a Vídeo y Audio)**: Usa hasta 4 imágenes de referencia del personaje junto con generación de audio.
+- **V2V (Vídeo a Vídeo)**: Redibuja el movimiento a partir de un vídeo base.
+- **Presets de Cámara**: Ajustes rápidos de movimiento de cámara en el prompt.
 
-### 3. 🖌️ Editor Qwen 2.1 (Inpaint & Habilidad de Pose)
-- **Inpainting Quirúrgico**: Modifica atuendos, expresiones faciales y anatomía pintando con máscara sin alterar el resto del dibujo.
-- **Presets de Pose (L0 a L3)**: Inyección de prompts estructurados desde micro-ajustes posturales sutiles (`L0`) hasta poses dinámicas de cuerpo completo (`L3`).
-- **Preservación de Estructura Latente**: Mantiene la composición original intacta mientras reimagina los detalles.
+### 3. 🖌️ Editor Qwen 2.1 (Inpaint y Presets de Pose)
+- **Edición por Instrucción e Inpainting con Máscara**: Usa `Qwen-Image-2.1-UC` (GGUF) para editar zonas pintadas o combinar hasta 3 referencias.
+- **Presets de Pose (`L0` a `L3`)**: Plantillas de ayuda en lenguaje natural pensadas para cambiar la postura procurando conservar el estilo anime 2D de la imagen base.
 
-### 4. 🎬 Estudio Timeline (Montaje NLE Generativo)
-Convierte clips cortos en **episodios completos de anime**:
-- **Secuenciador Multi-Pista**: Organiza clips de vídeo, ilustraciones fijas (con efecto Ken Burns dinámico) y transiciones.
-- **Pista de Audio y Música**: Sube bandas sonoras y efectos con control de volumen y segundo de entrada exacto.
-- **Secuencias Infinitas ("Continuar I2V")**: Extrae el último fotograma de cualquier clip con un clic para generar la siguiente escena cronológica.
-- **Exportación Directa**: Renderiza el montaje final en un único archivo MP4 con resolución unificada y mezcla de audio vía FFmpeg.
+### 4. 🎬 Estudio Timeline
+Un editor básico de línea de tiempo para unir clips sin salir de la aplicación:
+- **Pista Visual y de Audio**: Concatena clips de vídeo e imágenes estáticas, permite silenciar el audio original de cualquier vídeo y mezclar una pista de sonido externa.
+- **Atajos de Generación**: Extrae el último fotograma de un clip para encolar su continuación (`+ Continuar I2V`, `+ Puente FLF2V`, `+ Insertar Imagen IA`).
+- **Exportación MP4**: Usa `FFmpeg` local para normalizar y unir el proyecto en un archivo `.mp4`.
 
-### 5. 🔍 Upscaler Pro 2.0 & RIFE a 60 FPS
-- **Modo Rápido (GAN)**: Modelos `4x-AnimeSharp` y `4x-UltraSharp` para ampliación nítida en solo 2 segundos.
-- **Hires.fix (Difusión)**: Redibuja micro-detalles reales (pestañas, reflejos en el iris, hebras de cabello) con difusión Anima a denoise graduable (`0.15`–`0.35`).
-- **Remaster Qwen**: Reconstrucción semántica ultra-detallada a 2048px preservando el estilo artístico.
-- **AMD FidelityFX RCAS**: Nitidez adaptativa por contraste sin halos blancos ni bordes quemados.
-- **Interpolación RIFE**: Multiplica los fotogramas del vídeo hasta **60 FPS** sin desincronizar el audio.
+### 5. 🔍 Upscaler e Interpolación RIFE
+- **Modos**: `Rápido (GAN)`, `Hires.fix (Difusión Anima)` y `Remaster Qwen`.
+- **Tope de Seguridad**: Limita automáticamente la salida máxima a `4096×4096 px` (y rechaza entradas mayores a `2560 px`) para evitar picos extremos de VRAM y consumo eléctrico.
+- **Nitidez y FPS**: Incluye `ImageSharpenKJ` (`RCAS` / `Adaptive USM`) e interpolación de fotogramas de vídeo con `RIFE`.
 
-### 6. 🖼️ Galería Inteligente & Cola Multi-Pestaña
-- **Indicadores de Cola en Vivo**: Monitorea trabajos pendientes con tarjetas dinámicas giratorias (`"En cola"`, `"Generando"`) visibles en todas las pestañas.
-- **Visor Lightbox Interactivo**: Inspección a pantalla completa con zoom fluido y slider comparador antes/después.
-- **Traspaso Inmediato**: Envía cualquier creación previa a *Vídeo H3*, *Editor Qwen*, *Estudio Timeline* o *Upscaler* con un clic.
-
-### 7. 📖 Guía Interactiva Integrada
-- Manual bilingüe completo (`Español` / `English`) disponible directamente dentro de la interfaz.
-- Buscador en tiempo real y filtros temáticos por módulo.
-- Acordeones FAQ con trucos de optimización de VRAM, coherencia de personajes y dinamismo en vídeo.
+### 6. 🖼️ Galería y Cola de Trabajos
+- Cola monohilo FIFO pensada para una sola GPU, con indicadores de estado en todas las pestañas y visor comparador antes/después.
 
 ---
 
-## 💻 Requisitos de Hardware
+## 💻 Hardware Testeado (Equipo del Autor)
 
-WaifuStudio ha sido optimizado meticulosamente para la configuración **Solo-3060 (12 GB VRAM)**:
+En lugar de listar "requisitos mínimos" que no han sido probados, este es el **hardware exacto donde se desarrolla y testea WaifuStudio**:
 
-| Componente | Mínimo | Recomendado |
-|---|---|---|
-| **GPU** | NVIDIA RTX 3060 (12 GB VRAM) | NVIDIA RTX 3060 / 4070 / 4080 / 5000 |
-| **Controlador** | Driver NVIDIA >= 570.xx (CUDA 13.0) | Último Driver NVIDIA Game Ready o Studio |
-| **RAM** | 16 GB | 32 GB DDR4 / DDR5 |
-| **Almacenamiento** | 35 GB libres (SSD recomendado) | 60 GB+ libres en SSD NVMe |
-| **CPU** | Intel Core i5 / AMD Ryzen 5 | Intel Core i7 / AMD Ryzen 7 |
-| **Sistema Operativo** | Windows 10 / 11 (64 bits) | Windows 11 (64 bits) |
+| Componente | Hardware Testeado (Equipo del Autor) |
+|---|---|
+| **GPU** | **NVIDIA GeForce RTX 3060 (12 GB VRAM)** |
+| **CPU** | **AMD Ryzen 7 5700X (8 Núcleos)** |
+| **Placa Base** | **Gigabyte B550 AORUS ELITE AX V2** |
+| **RAM** | **32 GB DDR4 @ 3200 MHz** (2×16 GB) |
+| **Sistema Operativo** | **Windows 10 (64 bits)** |
 
-> 🛡️ **Garantía de Protección de VRAM**: El asistente de visión y lenguaje (Qwen3.5-9B) opera **100% en CPU** a través de un servicio ligero transiente en segundo plano, reservando la totalidad de los 12 GB de la GPU para inferencia gráfica y de vídeo.
+- **Nota sobre VRAM y CPU**: Todo el flujo está ajustado alrededor del presupuesto de **12 GB de VRAM** (cola FIFO de 1 trabajo a la vez). El modelo auxiliar `Qwen3.5-9B` para textos/visión se ejecuta en **CPU** (`llama-server` en el puerto `8290`) para no quitarle VRAM a ComfyUI.
+- **Nota sobre Linux / Servidor Casero**: Aunque los scripts automáticos `.bat` son para Windows, la aplicación base es Python estándar (`FastAPI` + `ComfyUI` + frontend Vanilla JS). Usuarios que han probado la app han reportado haberla montado con éxito en un **servidor doméstico con Linux** (en entorno Python/Docker) accediendo a la interfaz web desde el navegador vía red local / `localhost`.
 
 ---
 
-## 🌐 Internacionalización (i18n)
+## 🌐 Idiomas (i18n)
 
-WaifuStudio cuenta con cambio de idioma en tiempo real:
-- **Español (ES)**
-- **English (EN)**
-
-Cámbialo al instante desde el botón de globo `🌐` en la barra superior sin necesidad de recargar la página ni interrumpir tareas en curso.
+Puedes alternar la interfaz entre **Español (`ES`)** e **Inglés (`EN`)** en cualquier momento desde el botón `🌐` de la barra superior.
 
 ---
 
 ## 📄 Licencia y Créditos
 
-- Distribuido bajo la permisiva **[Licencia MIT](LICENSE)**.
-- Desarrollado sobre la base de [ComfyUI](https://github.com/comfyanonymous/ComfyUI), [Wan 2.1](https://github.com/Wan-Video/Wan2.1), [VideoDeltaNet](https://github.com), [Qwen](https://github.com/QwenLM) y [FFmpeg](https://ffmpeg.org/).
-- Las ilustraciones, audios y animaciones creadas con WaifuStudio te pertenecen al 100%.
+- Distribuido bajo la **[Licencia MIT](LICENSE)** — entregado sin garantías.
+- Construido sobre [ComfyUI](https://github.com/comfyanonymous/ComfyUI), **MinimaxH3 VDN (VideoDeltaNet)**, **Anima**, [Qwen](https://github.com/QwenLM) y [FFmpeg](https://ffmpeg.org/).
