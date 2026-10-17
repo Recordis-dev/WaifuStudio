@@ -646,7 +646,7 @@ function initEditorTab() {
   on("editor-recipe-mode", "change", () => {
     const mode = $("editor-recipe-mode")?.value;
     if (mode === "pose_nsfw") {
-      $("editor-cfg").value = "3.0";
+      $("editor-cfg").value = "2.0";
       updateEditorCfgNote();
     } else if (mode === "standard_sfw") {
       $("editor-cfg").value = "1.0";

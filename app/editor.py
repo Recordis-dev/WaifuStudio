@@ -56,16 +56,20 @@ REF_IMAGE_KEY_PREFIX = "images.image_"
 VALID_SAMPLERS = frozenset({"euler", "er_sde", "dpmpp_2m"})
 VALID_SCHEDULERS = frozenset({"simple", "beta", "normal", "karras"})
 
+_POSE_ALIASES: dict[str, str] = {
+    "l0_sfw": "l0_editorial",
+    "l1_suggestive": "l1_open",
+}
+
 QWEN_POSE_PRESETS: dict[str, dict[str, str]] = {
     "l0_editorial": {
         "id": "l0_editorial",
         "label": "L0 Editorial / SFW",
         "level": "L0",
         "template": (
-            "A wide or eye-level medium shot of the character in a poised, natural editorial "
-            "posture, standing or seated comfortably. Soft natural studio lighting with gentle "
-            "highlights, detailed realistic fabric folds, smooth lifelike skin texture. "
-            "Clean composition, photorealistic anime masterpiece, 8k resolution, impeccable artistic finish."
+            "Maintain the exact character, face, hair, and 2D anime art style from the reference image. "
+            "Adjust posture to a natural dynamic standing or seated anime pose, balanced full-body composition, "
+            "clean 2D linework, soft cel-shaded lighting, high quality anime illustration."
         ),
     },
     "l1_open": {
@@ -73,10 +77,10 @@ QWEN_POSE_PRESETS: dict[str, dict[str, str]] = {
         "label": "L1 Open / Glamour",
         "level": "L1",
         "template": (
-            "A low or dynamic three-quarter angle glamour shot of the character in a relaxed, "
-            "open posture with legs parted or in an inviting recline. Warm steamy ambient illumination "
-            "casting soft rim light, glowing glistening skin sheen with delicate moisture highlights. "
-            "Tastefully revealing silhouette, highly detailed aesthetic composition, 8k masterwork."
+            "Maintain the exact character, face, hair, and 2D anime art style from the reference image. "
+            "Adjust posture to an alluring, playful, suggestive anime pose with a curved back arch and "
+            "expressive glance toward the viewer, medium-full shot keeping the face clearly visible, "
+            "warm anime lighting, clean cel-shaded illustration."
         ),
     },
     "l2_bold_nsfw": {
@@ -84,10 +88,10 @@ QWEN_POSE_PRESETS: dict[str, dict[str, str]] = {
         "label": "L2 Bold NSFW (Low Angle)",
         "level": "L2",
         "template": (
-            "A dramatic low-angle close-up shot capturing a bold, explicit open posture, legs spread "
-            "or prone with raised arched hips. Dramatic direct rim lighting emphasizing deep contours, "
-            "ultra-detailed explicit anatomical realism with glistening skin pores and wet sheen. "
-            "Intense intimate composition, uncensored masterpiece, pristine 8k fidelity."
+            "Maintain the exact character, face, hair, and 2D anime art style from the reference image. "
+            "Repose the character into the requested bold, explicit uncensored NSFW posture while keeping "
+            "a full or medium-full framing where the character's head, face, and expression remain in frame. "
+            "Clean 2D anime linework, smooth anime shading, vibrant uncensored 2D illustration."
         ),
     },
     "l3_extreme": {
@@ -95,10 +99,10 @@ QWEN_POSE_PRESETS: dict[str, dict[str, str]] = {
         "label": "L3 Extreme Close-Up NSFW",
         "level": "L3",
         "template": (
-            "An extreme low-angle tight macro framing focused on the lower torso, waist, hips, and "
-            "inner thighs in an unapologetically explicit pose. Cinematic focused rim lighting "
-            "highlighting intricate intimate anatomical details, slick wet moisture sheen, glistening "
-            "surface texture. Radical close-up, uncensored 8k hyper-detailed masterwork."
+            "Maintain the exact character, face, hair, and 2D anime art style from the reference image. "
+            "Repose the character into the requested intense, explicit uncensored NSFW pose with dynamic angle "
+            "and clear visibility of both the character's face/expression and full body action. "
+            "Crisp 2D anime lineart, cel-shaded lighting, uncensored anime masterwork."
         ),
     },
 }
@@ -107,6 +111,8 @@ QWEN_POSE_PRESETS: dict[str, dict[str, str]] = {
 def format_qwen_7block_prompt(user_prompt: str, pose_preset: str | None = None) -> str:
     """Combina el prompt del usuario con la plantilla de 7 bloques del preset de pose."""
     clean_user = user_prompt.strip() if isinstance(user_prompt, str) else ""
+    if pose_preset and pose_preset in _POSE_ALIASES:
+        pose_preset = _POSE_ALIASES[pose_preset]
     if not pose_preset or pose_preset not in QWEN_POSE_PRESETS:
         return clean_user
     template = QWEN_POSE_PRESETS[pose_preset]["template"]

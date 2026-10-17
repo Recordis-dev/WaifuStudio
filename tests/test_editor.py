@@ -690,7 +690,7 @@ class QwenPoseAndPresetTests(unittest.TestCase):
         self.assertEqual(format_qwen_7block_prompt("cat", "inexistente"), "cat")
         formatted = format_qwen_7block_prompt("cat", "l0_editorial")
         self.assertTrue(formatted.startswith("cat, "))
-        self.assertIn("editorial posture", formatted)
+        self.assertIn("standing or seated anime pose", formatted)
 
         # Empty prompt returns template
         self.assertEqual(
@@ -866,7 +866,7 @@ class EditorRouteFeaturesTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             job_id = res.json()["job_id"]
             job = app.state.jobs[job_id]
-            self.assertTrue("glamour shot" in job["prompt"].lower())
+            self.assertTrue("suggestive anime pose" in job["prompt"].lower())
 
     def test_api_editor_generate_validaciones_error(self):
         self.install_model()

@@ -28,11 +28,14 @@ seccion ``frame_interpolation`` del catalogo lista los ckpts RIFE presentes en
 from __future__ import annotations
 
 import copy
+import io
 import json
 import math
 import shutil
 from pathlib import Path
 from typing import Any, Callable
+
+from PIL import Image, UnidentifiedImageError
 
 from app.config import APP_ROOT
 from app.engine import ComfyEngine, EngineError
@@ -41,6 +44,8 @@ from app.progress import ProgressTracker
 UPSCALERS_PATH = APP_ROOT / "registry" / "upscalers-v1.json"
 CATALOG_VERSION = 1
 MIN_UPSCALE_SCALE = 1
+MAX_UPSCALE_INPUT_SIDE = 2560
+MAX_UPSCALE_OUTPUT_SIDE = 4096
 IMAGE_EXT = ("png",)
 VIDEO_EXT = ("mp4", "webm")
 DEFAULT_PREFIX = "waifu/upscale"
@@ -406,6 +411,44 @@ def resolve_upscale_model_file(model_file: str, config: Any = None) -> str:
     return model_file
 
 
+def clamp_or_validate_upscale_dimensions(
+    image_path_or_bytes: Path | bytes,
+    scale: int,
+    passes: int,
+    model_file: str | None = None,
+) -> int:
+    """Valida dimensiones de entrada y ajusta passes si el resultado excedería MAX_UPSCALE_OUTPUT_SIDE."""
+    try:
+        if isinstance(image_path_or_bytes, (bytes, bytearray)):
+            img = Image.open(io.BytesIO(image_path_or_bytes))
+        else:
+            path = Path(image_path_or_bytes)
+            if not path.is_file():
+                return passes
+            img = Image.open(path)
+        with img:
+            width, height = img.size
+    except Image.DecompressionBombError:
+        raise EngineError("imagen demasiado grande para escalar")
+    except (UnidentifiedImageError, OSError, ValueError):
+        return passes
+
+    if max(width, height) > MAX_UPSCALE_INPUT_SIDE:
+        raise EngineError(
+            f"La imagen ya es de alta resolucion ({width}x{height} px, "
+            f"max permitido de entrada {MAX_UPSCALE_INPUT_SIDE} px); no requiere mas reescalado."
+        )
+
+    effective_scale = (
+        2
+        if model_file == "RealESRGAN_x2.pth"
+        else (scale if isinstance(scale, int) and scale > 0 else 2)
+    )
+    if passes == 2 and max(width, height) * (effective_scale ** 2) > MAX_UPSCALE_OUTPUT_SIDE:
+        return 1
+    return passes
+
+
 def _require_plain_name(value: Any, label: str) -> str:
     """Nombre de archivo simple (sin rutas ni ``..``): image/model del grafo."""
     if not isinstance(value, str) or not value.strip():
@@ -503,23 +546,26 @@ def build_upscale_graph(
         graph[SAVE_IMAGE_ID]["inputs"]["images"] = last_id
 
     if sharpen != 0:
-        if sharpen_method in ("rcas", "adaptive_usm"):
+        if sharpen_method == "rcas":
             strength = 0.45 if sharpen == 1 else 0.75
             graph[SHARPEN_ID] = {
                 "class_type": SHARPEN_KJ_CLASS,
                 "inputs": {
                     "image": last_id,
-                    "images": last_id,
-                    "method": {
-                        "method": sharpen_method,
-                        "strength": strength,
-                        "radius": 1.0,
-                        "threshold": 0.02,
-                    },
-                    "strength": strength,
-                    "radius": 1,
-                    "sigma": 1.0,
-                    "threshold": 0.02,
+                    "method": "rcas",
+                    "method.strength": strength,
+                },
+            }
+        elif sharpen_method == "adaptive_usm":
+            strength = 0.45 if sharpen == 1 else 0.75
+            graph[SHARPEN_ID] = {
+                "class_type": SHARPEN_KJ_CLASS,
+                "inputs": {
+                    "image": last_id,
+                    "method": "adaptive_usm",
+                    "method.strength": strength,
+                    "method.radius": 1.0,
+                    "method.threshold": 0.05,
                 },
             }
         else:
@@ -725,23 +771,26 @@ def build_video_upscale_graph(
 
     last_images = [VIDEO_UPSCALE_ID, 0]
     if sharpen != 0:
-        if sharpen_method in ("rcas", "adaptive_usm"):
+        if sharpen_method == "rcas":
             strength = 0.45 if sharpen == 1 else 0.75
             graph["7"] = {
                 "class_type": SHARPEN_KJ_CLASS,
                 "inputs": {
                     "image": last_images,
-                    "images": last_images,
-                    "method": {
-                        "method": sharpen_method,
-                        "strength": strength,
-                        "radius": 1.0,
-                        "threshold": 0.02,
-                    },
-                    "strength": strength,
-                    "radius": 1,
-                    "sigma": 1.0,
-                    "threshold": 0.02,
+                    "method": "rcas",
+                    "method.strength": strength,
+                },
+            }
+        elif sharpen_method == "adaptive_usm":
+            strength = 0.45 if sharpen == 1 else 0.75
+            graph["7"] = {
+                "class_type": SHARPEN_KJ_CLASS,
+                "inputs": {
+                    "image": last_images,
+                    "method": "adaptive_usm",
+                    "method.strength": strength,
+                    "method.radius": 1.0,
+                    "method.threshold": 0.05,
                 },
             }
         else:
@@ -913,8 +962,19 @@ def run_upscale(
         job["upscale_mode"] = upscale_mode
         denoise = parse_denoise(job.get("denoise"))
         job["denoise"] = denoise
-        job["params"] = _upscale_params(job)
         model_file = resolve_upscale_model_file(job.get("model_file"), config)
+        scale = job.get("scale") or 2
+        if hasattr(config, "comfy_root") and job.get("image_name"):
+            input_img = Path(config.comfy_root) / "input" / str(job["image_name"])
+            if input_img.is_file():
+                passes = clamp_or_validate_upscale_dimensions(
+                    input_img,
+                    scale=scale,
+                    passes=passes,
+                    model_file=model_file,
+                )
+        job["passes"] = passes
+        job["params"] = _upscale_params(job)
         graph = build_upscale_graph(
             job.get("image_name"),
             model_file,

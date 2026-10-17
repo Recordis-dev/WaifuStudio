@@ -12,10 +12,13 @@ validacion de fps/multiplier).
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import tempfile
 import unittest
 from pathlib import Path
+
+from PIL import Image
 
 from app import upscale as upscale_module
 from app.config import APP_ROOT, EngineConfig
@@ -42,11 +45,13 @@ from app.upscale import (
     SAVE_VIDEO_ID,
     SHARPEN_CLASS,
     SHARPEN_ID,
+    SHARPEN_KJ_CLASS,
     SHARPEN_PRESETS,
     UPSCALE2_ID,
     UPSCALERS_PATH,
     UPSCALE_PASSES,
     UPSCALE_SHARPEN,
+    clamp_or_validate_upscale_dimensions,
     VIDEO_COMPONENTS_ID,
     VIDEO_EXT,
     VIDEO_MODEL_LOADER_ID,
@@ -504,6 +509,31 @@ class BuildUpscaleGraphTests(unittest.TestCase):
         self.assertEqual(graph[SHARPEN_ID]["inputs"]["alpha"], 1.2)
         self.assertEqual(graph["4"]["inputs"]["images"], [SHARPEN_ID, 0])
 
+    def test_sharpen_kj_rcas_y_adaptive_usm(self):
+        graph_rcas = build_upscale_graph("a.png", "m.pth", sharpen=1, sharpen_method="rcas")
+        self.assertEqual(graph_rcas[SHARPEN_ID]["class_type"], SHARPEN_KJ_CLASS)
+        self.assertEqual(
+            graph_rcas[SHARPEN_ID]["inputs"],
+            {
+                "image": ["3", 0],
+                "method": "rcas",
+                "method.strength": 0.45,
+            },
+        )
+
+        graph_usm = build_upscale_graph("a.png", "m.pth", sharpen=2, sharpen_method="adaptive_usm")
+        self.assertEqual(graph_usm[SHARPEN_ID]["class_type"], SHARPEN_KJ_CLASS)
+        self.assertEqual(
+            graph_usm[SHARPEN_ID]["inputs"],
+            {
+                "image": ["3", 0],
+                "method": "adaptive_usm",
+                "method.strength": 0.75,
+                "method.radius": 1.0,
+                "method.threshold": 0.05,
+            },
+        )
+
     def test_sharpen_invalidos(self):
         for value in (3, -1, True, "1", 1.0, [], {}):
             with self.subTest(value=value):
@@ -650,6 +680,31 @@ class BuildVideoUpscaleGraphTests(unittest.TestCase):
         second = build_video_upscale_graph("b.mp4", "n.pth")
         self.assertEqual(first[LOAD_VIDEO_ID]["inputs"]["file"], "a.mp4")
         self.assertEqual(second[LOAD_VIDEO_ID]["inputs"]["file"], "b.mp4")
+
+    def test_video_sharpen_kj_rcas_y_adaptive_usm(self):
+        graph_rcas = build_video_upscale_graph("a.mp4", "m.pth", sharpen=1, sharpen_method="rcas")
+        self.assertEqual(graph_rcas["7"]["class_type"], SHARPEN_KJ_CLASS)
+        self.assertEqual(
+            graph_rcas["7"]["inputs"],
+            {
+                "image": [VIDEO_UPSCALE_ID, 0],
+                "method": "rcas",
+                "method.strength": 0.45,
+            },
+        )
+
+        graph_usm = build_video_upscale_graph("a.mp4", "m.pth", sharpen=2, sharpen_method="adaptive_usm")
+        self.assertEqual(graph_usm["7"]["class_type"], SHARPEN_KJ_CLASS)
+        self.assertEqual(
+            graph_usm["7"]["inputs"],
+            {
+                "image": [VIDEO_UPSCALE_ID, 0],
+                "method": "adaptive_usm",
+                "method.strength": 0.75,
+                "method.radius": 1.0,
+                "method.threshold": 0.05,
+            },
+        )
 
 
 class BuildFpsGraphTests(unittest.TestCase):
@@ -1569,6 +1624,68 @@ class RunFpsTests(UpscaleTestCase):
         self.assertEqual(
             graph[FPS_SAVE_VIDEO_ID]["inputs"]["filename_prefix"], "otro/sitio/grande"
         )
+
+
+class UpscaleDimensionSafetyTests(RunUpscaleTests):
+    def test_imagen_4096_lanza_engine_error(self):
+        bio = io.BytesIO()
+        img = Image.new("RGB", (4096, 4096), color=(255, 0, 0))
+        img.save(bio, format="PNG")
+        image_bytes = bio.getvalue()
+
+        with self.assertRaises(EngineError) as ctx:
+            clamp_or_validate_upscale_dimensions(image_bytes, scale=2, passes=1)
+        self.assertIn("alta resolucion", str(ctx.exception))
+        self.assertIn("4096x4096", str(ctx.exception))
+
+    def test_imagen_1500_con_passes_dos_rebaja_a_uno(self):
+        bio = io.BytesIO()
+        img = Image.new("RGB", (1500, 1500), color=(0, 255, 0))
+        img.save(bio, format="PNG")
+        image_bytes = bio.getvalue()
+
+        passes = clamp_or_validate_upscale_dimensions(image_bytes, scale=2, passes=2)
+        self.assertEqual(passes, 1)
+
+    def test_run_upscale_con_archivo_4096_marca_error(self):
+        input_dir = self.config.comfy_root / "input"
+        input_dir.mkdir(parents=True, exist_ok=True)
+        img_path = input_dir / "large_4096.png"
+        Image.new("RGB", (4096, 4096)).save(img_path)
+
+        transport = FakeUpscaleTransport(self.config)
+        job = self.make_job(image_name="large_4096.png", passes=1)
+        run_upscale(
+            job,
+            config=self.config,
+            store=self.store,
+            engine_factory=self.factory(transport),
+        )
+        row = self.store.get(job["gen_id"])
+        self.assertEqual(row["status"], "error")
+        self.assertIn("alta resolucion", row["error"])
+        self.assertEqual(transport.submits, [])
+
+    def test_run_upscale_con_archivo_1500_passes_dos_rebaja_a_uno(self):
+        input_dir = self.config.comfy_root / "input"
+        input_dir.mkdir(parents=True, exist_ok=True)
+        img_path = input_dir / "medium_1500.png"
+        Image.new("RGB", (1500, 1500)).save(img_path)
+
+        transport = FakeUpscaleTransport(self.config)
+        job = self.make_job(image_name="medium_1500.png", passes=2)
+        run_upscale(
+            job,
+            config=self.config,
+            store=self.store,
+            engine_factory=self.factory(transport),
+        )
+        row = self.store.get(job["gen_id"])
+        self.assertEqual(row["status"], "done")
+        self.assertEqual(job["passes"], 1)
+        self.assertEqual(job["params"]["passes"], 1)
+        graph = transport.submits[0]["prompt"]
+        self.assertNotIn(UPSCALE2_ID, graph)
 
 
 if __name__ == "__main__":

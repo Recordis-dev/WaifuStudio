@@ -17,6 +17,7 @@ from app.engine import EngineError
 from app.routes.image import _decode_image_b64, _write_input_png
 from app.routes.jobs import _JOBS
 from app.upscale import (
+    clamp_or_validate_upscale_dimensions,
     fps_ckpt,
     fps_multiplier,
     frame_interpolation,
@@ -28,6 +29,7 @@ from app.upscale import (
     parse_sharpen,
     parse_sharpen_method,
     parse_upscale_mode,
+    resolve_upscale_model_file,
 )
 
 router = APIRouter()
@@ -119,9 +121,15 @@ async def api_upscale(request: Request, payload: dict = Body(...)) -> Any:
                 "source_gen y image_b64 son mutuamente excluyentes"
             )
         entry = get_upscaler(payload.get("model"))
-        media_name = _write_input_png(
-            cfg.comfy_root / "input", _decode_image_b64(image_b64, "image_b64")
+        raw_bytes = _decode_image_b64(image_b64, "image_b64")
+        resolved_model = resolve_upscale_model_file(entry["file"], cfg)
+        passes = clamp_or_validate_upscale_dimensions(
+            raw_bytes,
+            scale=entry["scale"],
+            passes=passes,
+            model_file=resolved_model,
         )
+        media_name = _write_input_png(cfg.comfy_root / "input", raw_bytes)
         params = {
             "task": "upscale",
             "source_gen": None,
@@ -221,6 +229,14 @@ async def api_upscale(request: Request, payload: dict = Body(...)) -> Any:
         fps_out = None if fps_in is None else fps_in * multiplier
     else:
         entry = get_upscaler(payload.get("model"))
+        if source_kind == "image":
+            resolved_model = resolve_upscale_model_file(entry["file"], cfg)
+            passes = clamp_or_validate_upscale_dimensions(
+                source,
+                scale=entry["scale"],
+                passes=passes,
+                model_file=resolved_model,
+            )
     input_dir = cfg.comfy_input_dir
     input_dir.mkdir(parents=True, exist_ok=True)
     media_name = f"{uuid.uuid4().hex}{source.suffix.lower()}"
