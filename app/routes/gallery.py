@@ -110,8 +110,9 @@ async def api_gallery_clean_failed(request: Request) -> Any:
 async def api_character_media(char_id: int, name: str, request: Request) -> Any:
     chars = request.app.state.characters
     refs_root = Path(chars.refs_root).resolve()
-    candidate = (refs_root / str(char_id) / name).resolve()
-    if not candidate.is_relative_to(refs_root):
+    char_root = (refs_root / str(char_id)).resolve()
+    candidate = (char_root / name).resolve()
+    if not candidate.is_relative_to(char_root):
         return JSONResponse(
             status_code=403, content={"error": "ruta fuera de las referencias"}
         )
