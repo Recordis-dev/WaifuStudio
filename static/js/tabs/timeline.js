@@ -14,6 +14,7 @@ const state = {
   aiGenerating: false,
 };
 let previewAudioEl = null;
+let imageSequenceTimer = null;
 
 function setTimelineStatus(msg, err = false) {
   const el = $("timeline-status");
@@ -42,18 +43,85 @@ function resolveMediaUrl(item) {
   return name && item.id ? `/media/${item.id}/${name}` : "";
 }
 
+export function clipDurationForItem(item, metadataDuration = null) {
+  const isVideo = item && item.kind === "video";
+  if (!isVideo) {
+    const pDur = Number(item?.params?.duration);
+    if (Number.isFinite(pDur) && pDur > 0) return pDur;
+    return 3.0;
+  }
+  const pSec = Number(item?.params?.seconds);
+  if (Number.isFinite(pSec) && pSec > 0) return pSec;
+  const pDur = Number(item?.params?.duration);
+  if (Number.isFinite(pDur) && pDur > 0) return pDur;
+  const metaDur = Number(metadataDuration);
+  if (Number.isFinite(metaDur) && metaDur > 0) {
+    return Math.round(metaDur * 10) / 10;
+  }
+  return 5.0;
+}
+
+function updatePreviewMedia(clip) {
+  const video = $("timeline-preview-video");
+  let img = $("timeline-preview-image");
+  if (!img && video && video.parentNode) {
+    img = document.createElement("img");
+    img.id = "timeline-preview-image";
+    img.style.display = "none";
+    img.alt = "Preview clip";
+    video.parentNode.insertBefore(img, video.nextSibling);
+  }
+  if (!clip) {
+    if (video) {
+      video.pause();
+      video.removeAttribute("src");
+      video.style.display = "none";
+    }
+    if (img) {
+      img.removeAttribute("src");
+      img.style.display = "none";
+    }
+    return;
+  }
+  if (clip.kind === "image") {
+    if (video) {
+      video.pause();
+      video.removeAttribute("src");
+      video.style.display = "none";
+    }
+    if (img) {
+      img.setAttribute("src", clip.url);
+      img.style.display = "block";
+    }
+  } else {
+    if (img) {
+      img.removeAttribute("src");
+      img.style.display = "none";
+    }
+    if (video) {
+      video.style.display = "block";
+      video.src = clip.url;
+      video.muted = Boolean(clip.mute);
+      video.currentTime = 0;
+    }
+  }
+}
+
 function selectClip(index) {
   const clips = state.current.data.clips;
   if (index < 0 || index >= clips.length) return;
   state.selectedIndex = index;
   renderTracks();
   const clip = clips[index];
-  const video = $("timeline-preview-video");
-  if (video && clip) { video.src = clip.url; video.muted = Boolean(clip.mute); video.currentTime = 0; }
+  updatePreviewMedia(clip);
 }
 
 function stopSequencePlayback() {
   state.isPlayingAll = false;
+  if (imageSequenceTimer) {
+    clearTimeout(imageSequenceTimer);
+    imageSequenceTimer = null;
+  }
   const btn = $("btn-timeline-play-all");
   if (btn) btn.textContent = "▶ Reproducir Secuencia";
   if (previewAudioEl) { previewAudioEl.pause(); previewAudioEl = null; }
@@ -62,17 +130,25 @@ function stopSequencePlayback() {
 function playNextInSequence() {
   const clips = state.current.data.clips;
   if (!state.isPlayingAll || state.playIndex >= clips.length) { stopSequencePlayback(); return; }
+  if (imageSequenceTimer) {
+    clearTimeout(imageSequenceTimer);
+    imageSequenceTimer = null;
+  }
   const clip = clips[state.playIndex];
   state.selectedIndex = state.playIndex;
   renderTracks();
-  const video = $("timeline-preview-video");
-  if (!video) return;
-  video.src = clip.url;
-  video.muted = Boolean(clip.mute);
-  video.currentTime = 0;
-  video.play().catch(() => {});
+  updatePreviewMedia(clip);
   if (clip.kind === "image") {
-    setTimeout(() => { if (state.isPlayingAll) { state.playIndex++; playNextInSequence(); } }, (Number(clip.duration) || 3.0) * 1000);
+    const durMs = Math.max(0.5, Number(clip.duration) || 3.0) * 1000;
+    imageSequenceTimer = setTimeout(() => {
+      imageSequenceTimer = null;
+      if (state.isPlayingAll) { state.playIndex++; playNextInSequence(); }
+    }, durMs);
+  } else {
+    const video = $("timeline-preview-video");
+    if (video) {
+      video.play().catch(() => {});
+    }
   }
 }
 
@@ -118,6 +194,26 @@ function renderTracks() {
       <select class="timeline-btn-mini clip-fx" style="width:100%;"><option value="none"${clip.effect === "none" && clip.transition_in !== "fade" ? " selected" : ""}>FX: Ninguno</option><option value="fade"${clip.transition_in === "fade" ? " selected" : ""}>Transición Fade</option><option value="zoom_in"${clip.effect === "zoom_in" ? " selected" : ""}>Zoom In</option><option value="zoom_out"${clip.effect === "zoom_out" ? " selected" : ""}>Zoom Out</option></select>
       <div class="timeline-clip-actions"><button type="button" class="timeline-btn-mini" data-action="i2v" title="Continuar con I2V">⏭️ I2V</button><button type="button" class="timeline-btn-mini" data-action="left"${idx === 0 ? " disabled" : ""}>◀</button><button type="button" class="timeline-btn-mini" data-action="right"${idx === clips.length - 1 ? " disabled" : ""}>▶</button><button type="button" class="timeline-btn-mini" data-action="del" title="Eliminar">✕</button></div>`;
     container.appendChild(card);
+    if (clip.kind === "video" && !clip._hasExplicitDuration) {
+      const cardVideo = card.querySelector("video");
+      if (cardVideo) {
+        const updateFromCard = () => {
+          if (!clip._hasExplicitDuration && Number.isFinite(cardVideo.duration) && cardVideo.duration > 0) {
+            const d = clipDurationForItem(clip, cardVideo.duration);
+            clip.duration = d;
+            clip._hasExplicitDuration = true;
+            const durInput = card.querySelector(".clip-dur");
+            if (durInput) durInput.value = d;
+            calcTotalDuration();
+          }
+        };
+        if (Number.isFinite(cardVideo.duration) && cardVideo.duration > 0) {
+          updateFromCard();
+        } else {
+          cardVideo.addEventListener("loadedmetadata", updateFromCard, { once: true });
+        }
+      }
+    }
   });
   if (state.aiGenerating) {
     const ph = document.createElement("div");
@@ -141,7 +237,13 @@ function handleTrackClick(e) {
   } else if (action === "i2v") triggerAiAction("continue_i2v", idx);
   else if (action === "left" && idx > 0) { [clips[idx - 1], clips[idx]] = [clips[idx], clips[idx - 1]]; selectClip(idx - 1); }
   else if (action === "right" && idx < clips.length - 1) { [clips[idx + 1], clips[idx]] = [clips[idx], clips[idx + 1]]; selectClip(idx + 1); }
-  else if (action === "del") { clips.splice(idx, 1); state.selectedIndex = Math.max(0, idx - 1); renderTracks(); calcTotalDuration(); }
+  else if (action === "del") {
+    clips.splice(idx, 1);
+    state.selectedIndex = Math.max(0, Math.min(idx, clips.length - 1));
+    renderTracks();
+    calcTotalDuration();
+    if (clips.length) { selectClip(state.selectedIndex); } else { updatePreviewMedia(null); }
+  }
 }
 
 function handleTrackChange(e) {
@@ -149,7 +251,11 @@ function handleTrackChange(e) {
   if (!card) return;
   const clip = state.current.data.clips[Number(card.dataset.idx)];
   if (!clip) return;
-  if (e.target.classList.contains("clip-dur")) { clip.duration = Math.max(0.5, Number(e.target.value) || 3.0); calcTotalDuration(); }
+  if (e.target.classList.contains("clip-dur")) {
+    clip.duration = Math.max(0.5, Number(e.target.value) || 3.0);
+    clip._hasExplicitDuration = true;
+    calcTotalDuration();
+  }
   else if (e.target.classList.contains("clip-fx")) {
     const val = e.target.value;
     clip.transition_in = val === "fade" ? "fade" : "none"; clip.transition_out = val === "fade" ? "fade" : "none"; clip.effect = val === "fade" ? "none" : val;
@@ -194,13 +300,42 @@ export async function refreshTimelineMedia() {
       div.className = "timeline-media-item";
       div.title = `#${item.id} · ${item.prompt || ""}`;
       div.innerHTML = `${isVideo ? `<video src="${url}" preload="metadata"></video>` : `<img src="${url}" loading="lazy">`}<button type="button" class="timeline-media-add-btn">+</button>`;
+      const videoEl = isVideo ? div.querySelector("video") : null;
       div.querySelector(".timeline-media-add-btn").addEventListener("click", (e) => {
         e.stopPropagation();
-        state.current.data.clips.push({
-          generation_id: item.id, kind: isVideo ? "video" : "image", url, source_path: url,
-          duration: isVideo ? 5.0 : 3.0, mute: false, effect: "none", transition_in: "none", transition_out: "none",
-        });
-        selectClip(state.current.data.clips.length - 1);
+        const hasParam = isVideo && (
+          (Number(item?.params?.seconds) > 0) ||
+          (Number(item?.params?.duration) > 0)
+        );
+        const metaDuration = videoEl && Number.isFinite(videoEl.duration) && videoEl.duration > 0 ? videoEl.duration : null;
+        const dur = clipDurationForItem(item, metaDuration);
+        const clip = {
+          generation_id: item.id,
+          kind: isVideo ? "video" : "image",
+          url,
+          source_path: url,
+          duration: dur,
+          mute: false,
+          effect: "none",
+          transition_in: "none",
+          transition_out: "none",
+          _hasExplicitDuration: Boolean(hasParam || metaDuration),
+        };
+        state.current.data.clips.push(clip);
+        const newIdx = state.current.data.clips.length - 1;
+        selectClip(newIdx);
+
+        if (isVideo && !clip._hasExplicitDuration && videoEl) {
+          videoEl.addEventListener("loadedmetadata", () => {
+            if (!clip._hasExplicitDuration && Number.isFinite(videoEl.duration) && videoEl.duration > 0) {
+              clip.duration = clipDurationForItem(item, videoEl.duration);
+              clip._hasExplicitDuration = true;
+              calcTotalDuration();
+              const cardDur = document.querySelector(`.timeline-clip-card[data-idx="${newIdx}"] .clip-dur`);
+              if (cardDur) cardDur.value = clip.duration;
+            }
+          }, { once: true });
+        }
       });
       shelf.appendChild(div);
     }
@@ -249,7 +384,13 @@ async function exportTimeline() {
     const res = await postJson("/api/timeline/export", { project_data: state.current.data, name: state.current.name || "Exportación Timeline" });
     setTimelineStatus(`¡Vídeo exportado con éxito! (#${res.generation_id})`);
     const video = $("timeline-preview-video");
-    if (video && res.output_url) { video.src = res.output_url; video.play().catch(() => {}); }
+    const img = $("timeline-preview-image");
+    if (img) img.style.display = "none";
+    if (video && res.output_url) {
+      video.style.display = "block";
+      video.src = res.output_url;
+      video.play().catch(() => {});
+    }
   } catch (err) { setTimelineStatus(`Error en exportación: ${err.message}`, true); }
   finally { if (btn) btn.disabled = false; }
 }
@@ -263,6 +404,7 @@ async function enqueueClipJob(jobId, kind, dur, insertIdx, msg) {
       const newUrl = `/media/${job.gen_id}/${outName}`;
       state.current.data.clips.splice(insertIdx, 0, {
         generation_id: job.gen_id, kind, url: newUrl, source_path: newUrl, duration: dur, mute: false, effect: "none",
+        transition_in: "none", transition_out: "none", _hasExplicitDuration: true,
       });
       selectClip(insertIdx);
       setAiStatus(msg);
@@ -367,6 +509,7 @@ export function initTimelineTab() {
     if (nameInput) nameInput.value = "Mi Secuencia";
     const select = $("timeline-project-select");
     if (select) select.value = "";
+    updatePreviewMedia(null);
     renderTracks(); setTimelineStatus("Nuevo proyecto iniciado");
   });
 
