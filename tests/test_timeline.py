@@ -18,11 +18,13 @@ from app.registry import DEFAULT_PATH as REGISTRY_PATH, ModelRegistry
 from app.server import create_app
 from app.store import Store
 from app.timeline import (
+    _resolve_clip_source,
     export_timeline_project,
     extract_clip_frame,
     has_audio_stream,
     image_to_video_clip,
     normalize_video_clip,
+    resolve_gallery_path,
 )
 
 FAKE_PNG = b"\x89PNG\r\n\x1a\n" + b"fake-png-content"
@@ -168,8 +170,14 @@ class TimelineModuleTests(unittest.TestCase):
         work_dir = self.root / "work"
         gallery_dir = self.root / "gallery"
         gallery_dir.mkdir(parents=True, exist_ok=True)
+        image_src = gallery_dir / "sample.png"
+        video_src = gallery_dir / "sample.mp4"
+        image_src.write_bytes(self.image_file.read_bytes())
+        video_src.write_bytes(self.video_file.read_bytes())
         out_mp4 = self.root / "final.mp4"
-        audio_file = self.root / "audio.mp3"
+        audio_dir = self.root / "audio"
+        audio_dir.mkdir(parents=True, exist_ok=True)
+        audio_file = audio_dir / "audio.mp3"
         audio_file.write_bytes(FAKE_MP3)
 
         def fake_img(src, out, **kwargs):
@@ -199,8 +207,8 @@ class TimelineModuleTests(unittest.TestCase):
             "height": 720,
             "fps": 24,
             "clips": [
-                {"kind": "image", "source_path": str(self.image_file), "duration": 2.0},
-                {"kind": "video", "source_path": str(self.video_file), "duration": 3.0},
+                {"kind": "image", "source_path": str(image_src), "duration": 2.0},
+                {"kind": "video", "source_path": str(video_src), "duration": 3.0},
             ],
             "audio_tracks": [
                 {"source_path": str(audio_file), "start_time": 0.5, "volume": 1.2}
@@ -216,6 +224,172 @@ class TimelineModuleTests(unittest.TestCase):
         )
         self.assertEqual(res, out_mp4)
         self.assertTrue(out_mp4.is_file())
+
+    @patch("subprocess.run")
+    def test_image_to_video_clip_fade(self, mock_run):
+        captured_cmd = []
+
+        def fake_run(cmd, **kwargs):
+            captured_cmd.extend(cmd)
+            out_file = Path(cmd[-1])
+            out_file.write_bytes(FAKE_MP4)
+            return MagicMock(returncode=0, stderr="")
+
+        mock_run.side_effect = fake_run
+
+        out_mp4 = self.root / "img_clip_fade.mp4"
+        res = image_to_video_clip(
+            self.image_file,
+            out_mp4,
+            duration=3.0,
+            transition_in="fade",
+            transition_out="fade",
+            ffmpeg_bin="ffmpeg",
+        )
+        self.assertEqual(res, out_mp4)
+        self.assertTrue(out_mp4.is_file())
+        vf_idx = captured_cmd.index("-vf")
+        vf_val = captured_cmd[vf_idx + 1]
+        self.assertIn("fade=t=in:st=0:d=0.5", vf_val)
+        self.assertIn("fade=t=out:st=2.50:d=0.5", vf_val)
+
+    @patch("app.timeline.concat_videos")
+    @patch("app.timeline.normalize_video_clip")
+    @patch("app.timeline.image_to_video_clip")
+    @patch("subprocess.run")
+    def test_export_timeline_project_image_fade(self, mock_run, mock_img, mock_norm, mock_concat):
+        work_dir = self.root / "work_fade"
+        gallery_dir = self.root / "gallery_fade"
+        gallery_dir.mkdir(parents=True, exist_ok=True)
+        image_src = gallery_dir / "sample_fade.png"
+        image_src.write_bytes(self.image_file.read_bytes())
+        out_mp4 = self.root / "final_fade.mp4"
+
+        mock_img.side_effect = lambda src, out, **kw: out.write_bytes(FAKE_MP4) or out
+        mock_concat.side_effect = lambda paths, out, **kw: out.write_bytes(FAKE_MP4) or out
+
+        project_data = {
+            "width": 1280,
+            "height": 720,
+            "fps": 24,
+            "clips": [
+                {
+                    "kind": "image",
+                    "source_path": str(image_src),
+                    "duration": 4.0,
+                    "transition_in": "fade",
+                    "transition_out": "fade",
+                },
+            ],
+        }
+
+        export_timeline_project(
+            project_data,
+            out_mp4,
+            work_dir=work_dir,
+            gallery_dir=gallery_dir,
+            ffmpeg_bin="ffmpeg",
+        )
+        self.assertEqual(mock_img.call_count, 1)
+        _, kwargs = mock_img.call_args
+        self.assertEqual(kwargs.get("transition_in"), "fade")
+        self.assertEqual(kwargs.get("transition_out"), "fade")
+
+    def test_resolve_clip_source_valid_url(self):
+        gallery_dir = self.root / "gallery_valid_url"
+        clip_dir = gallery_dir / "101"
+        clip_dir.mkdir(parents=True, exist_ok=True)
+        clip_file = clip_dir / "scene.mp4"
+        clip_file.write_bytes(FAKE_MP4)
+
+        # 1. URL relativa /media/...
+        resolved, kind = _resolve_clip_source(
+            {"source_path": "/media/101/scene.mp4"}, gallery_dir
+        )
+        self.assertEqual(resolved, clip_file.resolve())
+        self.assertEqual(kind, "video")
+
+        # 2. URL completa http://...
+        resolved_full, kind_full = _resolve_clip_source(
+            {"source_path": "http://localhost:8765/media/101/scene.mp4"}, gallery_dir
+        )
+        self.assertEqual(resolved_full, clip_file.resolve())
+        self.assertEqual(kind_full, "video")
+
+    def test_resolve_clip_source_traversal(self):
+        gallery_dir = self.root / "gallery_traversal"
+        gallery_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1. Traversal relativo
+        with self.assertRaises(EngineError):
+            _resolve_clip_source({"source_path": "../secret.mp4"}, gallery_dir)
+
+        # 2. Traversal con prefijo /media/
+        with self.assertRaises(EngineError):
+            _resolve_clip_source({"source_path": "/media/../secret.mp4"}, gallery_dir)
+
+        # 3. Ruta externa arbitraria absoluta
+        external = Path(tempfile.gettempdir()) / "outside_clip.mp4"
+        external.write_bytes(FAKE_MP4)
+        try:
+            with self.assertRaises(EngineError):
+                _resolve_clip_source({"source_path": str(external)}, gallery_dir)
+        finally:
+            external.unlink(missing_ok=True)
+
+    @patch("app.timeline.concat_videos")
+    @patch("app.timeline.normalize_video_clip")
+    @patch("app.timeline.image_to_video_clip")
+    @patch("subprocess.run")
+    def test_export_audio_confinement_and_traversal(self, mock_run, mock_img, mock_norm, mock_concat):
+        work_dir = self.root / "work_audio"
+        gallery_dir = self.root / "gallery_audio"
+        gallery_dir.mkdir(parents=True, exist_ok=True)
+        video_src = gallery_dir / "sample_audio.mp4"
+        video_src.write_bytes(self.video_file.read_bytes())
+        audio_dir = self.root / "audio"
+        audio_dir.mkdir(parents=True, exist_ok=True)
+
+        legit_audio = audio_dir / "valid.mp3"
+        legit_audio.write_bytes(FAKE_MP3)
+
+        external_audio = Path(tempfile.gettempdir()) / "secret.mp3"
+        external_audio.write_bytes(FAKE_MP3)
+
+        mock_norm.side_effect = lambda src, out, **kw: out.write_bytes(FAKE_MP4) or out
+        mock_concat.side_effect = lambda paths, out, **kw: out.write_bytes(FAKE_MP4) or out
+
+        captured_inputs = []
+
+        def fake_run(cmd, **kwargs):
+            captured_inputs.extend(cmd)
+            out_file = Path(cmd[-1])
+            out_file.write_bytes(FAKE_MP4)
+            return MagicMock(returncode=0, stderr="")
+
+        mock_run.side_effect = fake_run
+
+        try:
+            project_data = {
+                "clips": [{"kind": "video", "source_path": str(video_src)}],
+                "audio_tracks": [
+                    {"source_path": "/media/audio/valid.mp3", "start_time": 0.0},
+                    {"source_path": "../secret.mp3", "start_time": 0.0},
+                    {"source_path": str(external_audio), "start_time": 0.0},
+                ],
+            }
+            out_mp4 = self.root / "final_audio.mp4"
+            export_timeline_project(
+                project_data,
+                out_mp4,
+                work_dir=work_dir,
+                gallery_dir=gallery_dir,
+                ffmpeg_bin="ffmpeg",
+            )
+            self.assertIn(str(legit_audio.resolve()), captured_inputs)
+            self.assertNotIn(str(external_audio.resolve()), captured_inputs)
+        finally:
+            external_audio.unlink(missing_ok=True)
 
 
 class TimelineRouteTests(unittest.TestCase):
@@ -307,6 +481,62 @@ class TimelineRouteTests(unittest.TestCase):
         self.assertTrue(data["ok"])
         self.assertEqual(data["image_name"], f"tl_frame_{gen_id}_first.png")
         self.assertEqual(data["preview_url"], f"/api/refs/tl_frame_{gen_id}_first.png")
+
+    @patch("app.routes.timeline.extract_clip_frame")
+    def test_extract_frame_route_source_path_media_url_and_fallback(self, mock_extract):
+        def fake_extract(vpath, out_png, **kwargs):
+            out_png.parent.mkdir(parents=True, exist_ok=True)
+            out_png.write_bytes(FAKE_PNG)
+            return out_png
+
+        mock_extract.side_effect = fake_extract
+
+        # Crear generacion video con output clip.mp4
+        gen_id = self.store.add("video_model", "prompt", "", {}, kind="video")
+        gdir = self.config.data_dir / "gallery" / str(gen_id)
+        gdir.mkdir(parents=True, exist_ok=True)
+        video_path = gdir / "clip.mp4"
+        video_path.write_bytes(FAKE_MP4)
+        self.store.update(gen_id, status="done", outputs=["clip.mp4"], kind="video")
+
+        # 1. payload con source_path="/media/<id>/clip.mp4" + generation_id=<id> => 200 y frame
+        res1 = self.client.post(
+            "/api/timeline/extract_frame",
+            json={
+                "source_path": f"/media/{gen_id}/clip.mp4",
+                "generation_id": gen_id,
+                "position": "first",
+            },
+        )
+        self.assertEqual(res1.status_code, 200)
+        data1 = res1.json()
+        self.assertTrue(data1["ok"])
+        self.assertTrue(data1["image_b64"])
+        self.assertEqual(data1["image_name"], f"tl_frame_{gen_id}_first.png")
+
+        # 2. payload con source_path invalido + generation_id valido => 200 (fallback)
+        res2 = self.client.post(
+            "/api/timeline/extract_frame",
+            json={
+                "source_path": f"/media/{gen_id}/nonexistent.mp4",
+                "generation_id": gen_id,
+                "position": "last",
+            },
+        )
+        self.assertEqual(res2.status_code, 200)
+        data2 = res2.json()
+        self.assertTrue(data2["ok"])
+        self.assertTrue(data2["image_b64"])
+        self.assertEqual(data2["image_name"], f"tl_frame_{gen_id}_last.png")
+
+        # 3. source_path "../secret.mp4" => 403/404, no leer fuera
+        outside_secret = self.root / "secret.mp4"
+        outside_secret.write_bytes(FAKE_MP4)
+        res3 = self.client.post(
+            "/api/timeline/extract_frame",
+            json={"source_path": "../secret.mp4", "position": "first"},
+        )
+        self.assertIn(res3.status_code, (403, 404))
 
     def test_upload_and_serve_audio_route(self):
         b64_audio = base64.b64encode(FAKE_MP3).decode("ascii")
