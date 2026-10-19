@@ -237,6 +237,85 @@ async function attachVideoFrameFromUrl(inputId, name) {
   }
 }
 
+function videoReuseParams(params = {}) {
+  const p = params || {};
+  let mode = "i2v";
+  if (p.mode === "ref2va") mode = "ref2va";
+  else if (p.mode === "v2v") mode = "v2v";
+  else if (p.mode === "flf2v") mode = "flf2v";
+
+  const profile =
+    mode === "ref2va" || mode === "v2v"
+      ? "ref2va"
+      : typeof p.profile === "string" && p.profile
+      ? p.profile
+      : "referencia";
+
+  const variant =
+    mode === "ref2va" || mode === "v2v"
+      ? "vdn8"
+      : typeof p.variant === "string" && p.variant
+      ? p.variant
+      : "turbo4";
+
+  const sage = p.sage === true;
+
+  const seconds = Number.isFinite(Number(p.seconds)) ? Number(p.seconds) : null;
+  const width = Number.isFinite(Number(p.width)) ? Number(p.width) : null;
+  const height = Number.isFinite(Number(p.height)) ? Number(p.height) : null;
+  const seed = p.seed != null ? p.seed : null;
+  const prompt = String(p.prompt || p.motion_positive || "");
+
+  // Personalizado
+  const encoder = p.encoder != null ? String(p.encoder) : "4b";
+  const lora_strength =
+    p.lora_strength != null && Number.isFinite(Number(p.lora_strength))
+      ? Number(p.lora_strength)
+      : 1.0;
+  const denoise =
+    p.denoise != null && Number.isFinite(Number(p.denoise))
+      ? Number(p.denoise)
+      : 1.0;
+  const sampler_name =
+    p.sampler_name != null ? String(p.sampler_name) : "res_multistep";
+  const scheduler =
+    p.scheduler != null ? String(p.scheduler) : "simple";
+  const tile_size =
+    p.tile_size != null && Number.isFinite(Number(p.tile_size))
+      ? Number(p.tile_size)
+      : 256;
+  const include_audio =
+    p.include_audio !== undefined ? Boolean(p.include_audio) : true;
+
+  const ref_images = Array.isArray(p.ref_images)
+    ? p.ref_images
+    : p.ref_images
+    ? [p.ref_images]
+    : [];
+  const ref_video = typeof p.ref_video === "string" ? p.ref_video.trim() : "";
+
+  return {
+    mode,
+    profile,
+    variant,
+    sage,
+    seconds,
+    width,
+    height,
+    seed,
+    prompt,
+    encoder,
+    lora_strength,
+    denoise,
+    sampler_name,
+    scheduler,
+    tile_size,
+    include_audio,
+    ref_images,
+    ref_video,
+  };
+}
+
 async function applyVideoSavedFrames(params) {
   const saved = params || {};
   const first = saved.image || saved.ref_image || "";
@@ -252,6 +331,64 @@ async function applyVideoSavedFrames(params) {
       warnings.push(error.message);
     }
   }
+
+  // BUG-VIDEO-03: Restaura params.ref_images en state.videoRefs y refresca UI
+  clearVideoRefs();
+  const refImages = Array.isArray(saved.ref_images)
+    ? saved.ref_images
+    : (saved.ref_images ? [saved.ref_images] : []);
+  for (const refName of refImages) {
+    const clean = typeof refName === "string" ? refName.trim() : "";
+    if (!clean) continue;
+    try {
+      const url = clean.startsWith("data:") || clean.startsWith("blob:")
+        ? clean
+        : `/api/refs/${encodeURIComponent(clean)}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const file = new File([blob], clean, { type: blob.type || "image/png" });
+      const b64 = await readFileBase64(file);
+      state.videoRefs.push({
+        name: clean,
+        originalPath: clean,
+        b64,
+        url: URL.createObjectURL(file),
+      });
+    } catch (err) {
+      warnings.push(`ref ${clean} no disponible (${err.message})`);
+    }
+  }
+  updateVideoRefs();
+
+  // BUG-VIDEO-03: Restaura params.ref_video en input/flujo V2V
+  const refVid = typeof saved.ref_video === "string" ? saved.ref_video.trim() : "";
+  if (refVid) {
+    try {
+      await attachFileInputFromUrl(
+        "video-v2v-input",
+        `/api/refs/${encodeURIComponent(refVid)}`,
+        refVid
+      );
+      const v2vInput = $("video-v2v-input");
+      const file = v2vInput && v2vInput.files && v2vInput.files[0];
+      const wrap = $("video-v2v-preview-wrap");
+      const preview = $("video-v2v-preview");
+      if (file && preview && wrap) {
+        if (v2vPreviewObjectUrl) URL.revokeObjectURL(v2vPreviewObjectUrl);
+        v2vPreviewObjectUrl = URL.createObjectURL(file);
+        preview.src = v2vPreviewObjectUrl;
+        wrap.classList.remove("hidden");
+      }
+    } catch (_err) {
+      const v2vInput = $("video-v2v-input");
+      if (v2vInput) v2vInput.title = `Video V2V previo: ${refVid}`;
+      saved._ref_video_status = `video previo: ${refVid}`;
+    }
+  }
+
   if (warnings.length) {
     throw new Error(warnings.join("; "));
   }
@@ -259,38 +396,61 @@ async function applyVideoSavedFrames(params) {
 
 async function reuseVideoGeneration(item) {
   const params = item.params || {};
+  const reused = videoReuseParams(params);
+
   $("video-engine").value = "h3";
-  $("video-mode").value =
-    params.mode === "flf2v" ? "flf2v" : "i2v";
-  const storedProfile =
-    typeof params.profile === "string" && params.profile
-      ? params.profile
-      : "referencia";
-  setSelectValue($("video-h3-profile"), storedProfile);
+  $("video-mode").value = reused.mode;
+
+  setSelectValue($("video-h3-profile"), reused.profile);
   updateH3Variants();
-  const storedVariant =
-    typeof params.variant === "string" && params.variant
-      ? params.variant
-      : "turbo4";
-  setSelectValue($("video-h3-variant"), storedVariant);
-  $("video-h3-sage").checked = params.sage === true;
-  const h3Seconds = Number(params.seconds);
-  if (state.videoH3Seconds.includes(h3Seconds)) {
-    $("video-h3-seconds").value = String(h3Seconds);
+  setSelectValue($("video-h3-variant"), reused.variant);
+
+  $("video-h3-sage").checked = reused.sage;
+  if (reused.seconds != null && state.videoH3Seconds.includes(reused.seconds)) {
+    $("video-h3-seconds").value = String(reused.seconds);
   }
-  const width = Number(params.width);
-  const height = Number(params.height);
-  if (Number.isFinite(width) && Number.isFinite(height)) {
-    setSelectValue($("video-h3-size"), `${width}x${height}`);
+  if (reused.width != null && reused.height != null) {
+    setSelectValue($("video-h3-size"), `${reused.width}x${reused.height}`);
   }
+
+  // BUG-VIDEO-05: Restaura Personalizado y badges/controles
+  const encEl = $("video-h3-encoder");
+  if (encEl) setSelectValue(encEl, reused.encoder);
+  const warn = $("video-h3-encoder-warning");
+  if (warn) warn.classList.toggle("hidden", reused.encoder !== "32b");
+
+  const loraSlider = $("video-h3-lora-strength");
+  if (loraSlider) loraSlider.value = String(reused.lora_strength);
+  const loraBadge = $("video-h3-lora-strength-val");
+  if (loraBadge) loraBadge.textContent = reused.lora_strength.toFixed(2);
+
+  const denoiseSlider = $("video-h3-denoise");
+  if (denoiseSlider) denoiseSlider.value = String(reused.denoise);
+  const denoiseBadge = $("video-h3-denoise-val");
+  if (denoiseBadge) denoiseBadge.textContent = reused.denoise.toFixed(2);
+
+  const samplerEl = $("video-h3-sampler");
+  if (samplerEl) setSelectValue(samplerEl, reused.sampler_name);
+
+  const schedEl = $("video-h3-scheduler");
+  if (schedEl) setSelectValue(schedEl, reused.scheduler);
+
+  const tileEl = $("video-h3-tile-size");
+  if (tileEl) setSelectValue(tileEl, String(reused.tile_size));
+
+  const audioEl = $("video-h3-audio");
+  if (audioEl) audioEl.checked = reused.include_audio;
+
   updateH3Notes();
-  if (params.seed != null) {
-    $("video-seed").value = params.seed;
+  if (reused.seed != null) {
+    $("video-seed").value = reused.seed;
   }
   $("video-prompt").value = String(
     params.prompt || item.prompt || params.motion_positive || ""
   );
+
   applyVideoEngine();
+
   let warning = "";
   try {
     await applyVideoSavedFrames(params);
@@ -299,6 +459,8 @@ async function reuseVideoGeneration(item) {
   }
   if (warning) {
     setVideoStatus(`Cargado #${item.id} · ${warning}`, true);
+  } else if (params._ref_video_status) {
+    setVideoStatus(`Cargado #${item.id} (${params._ref_video_status})`);
   } else {
     setVideoStatus(`Cargado #${item.id}`);
   }
@@ -312,7 +474,10 @@ function startNewVideo() {
   $("video-image").value = "";
   if ($("video-last-image")) $("video-last-image").value = "";
   const v2vInput = $("video-v2v-input");
-  if (v2vInput) v2vInput.value = "";
+  if (v2vInput) {
+    v2vInput.value = "";
+    v2vInput.removeAttribute("title");
+  }
   if (v2vPreviewObjectUrl) {
     URL.revokeObjectURL(v2vPreviewObjectUrl);
     v2vPreviewObjectUrl = null;
@@ -329,6 +494,29 @@ function startNewVideo() {
   setSelectValue($("video-h3-variant"), "turbo8");
   $("video-h3-sage").checked = false;
   setSelectValue($("video-h3-seconds"), String(defaultH3Seconds()));
+
+  // Reset controles personalizado
+  const encEl = $("video-h3-encoder");
+  if (encEl) setSelectValue(encEl, "4b");
+  const warn = $("video-h3-encoder-warning");
+  if (warn) warn.classList.add("hidden");
+  const loraSlider = $("video-h3-lora-strength");
+  if (loraSlider) loraSlider.value = "1.0";
+  const loraBadge = $("video-h3-lora-strength-val");
+  if (loraBadge) loraBadge.textContent = "1.00";
+  const denoiseSlider = $("video-h3-denoise");
+  if (denoiseSlider) denoiseSlider.value = "1.0";
+  const denoiseBadge = $("video-h3-denoise-val");
+  if (denoiseBadge) denoiseBadge.textContent = "1.00";
+  const samplerEl = $("video-h3-sampler");
+  if (samplerEl) setSelectValue(samplerEl, "res_multistep");
+  const schedEl = $("video-h3-scheduler");
+  if (schedEl) setSelectValue(schedEl, "simple");
+  const tileEl = $("video-h3-tile-size");
+  if (tileEl) setSelectValue(tileEl, "256");
+  const audioEl = $("video-h3-audio");
+  if (audioEl) audioEl.checked = true;
+
   state.videoNegativeTouched = false;
   state.videoVramHint = "";
   applyVideoEngine();
@@ -506,10 +694,13 @@ async function generateVideo() {
       return;
     }
     payload.prompt = prompt;
-    if (mode !== "ref2va") {
+    if (mode === "ref2va" || mode === "v2v") {
+      payload.profile = "ref2va";
+      payload.variant = "vdn8";
+    } else {
       payload.profile = $("video-h3-profile").value;
+      payload.variant = $("video-h3-variant").value;
     }
-    payload.variant = $("video-h3-variant").value;
     payload.sage = $("video-h3-sage").checked;
     if (payload.profile === "personalizado") {
       const encEl = $("video-h3-encoder");
@@ -593,7 +784,7 @@ function applyVideoEngine() {
 
   if ($("video-h3-guide")) $("video-h3-guide").style.display = isWan ? "none" : "";
 
-  if (mode === "ref2va") {
+  if (mode === "ref2va" || mode === "v2v") {
     setSelectValue($("video-h3-profile"), "ref2va");
   } else if ($("video-h3-profile") && $("video-h3-profile").value === "ref2va") {
     setSelectValue($("video-h3-profile"), "estandar");
@@ -689,6 +880,7 @@ export {
   attachVideoFrameFromUrl,
   applyVideoSavedFrames,
   reuseVideoGeneration,
+  videoReuseParams,
   startNewVideo,
   updateVideoRefs,
   removeVideoRef,

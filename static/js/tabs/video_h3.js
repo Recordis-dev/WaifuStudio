@@ -275,10 +275,11 @@ function updateH3Variants() {
 
 function onH3ProfileChange() {
   const profile = $("video-h3-profile") ? $("video-h3-profile").value : "";
-  if (profile === "ref2va" && $("video-mode") && $("video-mode").value !== "ref2va") {
+  const currentMode = $("video-mode") ? $("video-mode").value : "i2v";
+  if (profile === "ref2va" && currentMode !== "ref2va" && currentMode !== "v2v") {
     setSelectValue($("video-mode"), "ref2va");
     applyVideoEngine();
-  } else if (profile !== "ref2va" && $("video-mode") && $("video-mode").value === "ref2va") {
+  } else if (profile !== "ref2va" && (currentMode === "ref2va" || currentMode === "v2v")) {
     setSelectValue($("video-mode"), "i2v");
     applyVideoEngine();
   }

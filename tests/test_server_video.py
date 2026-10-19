@@ -1183,6 +1183,48 @@ class VideoGenerateEnqueueTests(ServerVideoTestCase):
         self.assertEqual(row["params"]["profile"], "ref2va")
         self.assertEqual(row["params"]["ref_images"], job["ref_image_names"])
 
+    def test_video_generate_v2v_fuerza_ref2va_y_vdn8_incluso_con_rapido_turbo4(self):
+        queue = RecordingQueue()
+        vid_b64 = base64.b64encode(MP4_BYTES).decode("ascii")
+        response = self.make_client(queue=queue).post(
+            "/api/video/generate",
+            json={
+                "engine": "h3",
+                "mode": "v2v",
+                "profile": "rapido",
+                "variant": "turbo4",
+                "ref_video_b64": vid_b64,
+                "prompt": "prompt cinematografico",
+                "seconds": 8,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        job = queue.jobs[0]
+        self.assertEqual(job["mode"], "v2v")
+        self.assertEqual(job["profile"], "ref2va")
+        self.assertEqual(job["variant"], "vdn8")
+        row = self.store.list()[0]
+        self.assertEqual(row["params"]["mode"], "v2v")
+        self.assertEqual(row["params"]["profile"], "ref2va")
+        self.assertEqual(row["params"]["variant"], "vdn8")
+
+    def test_video_generate_i2v_rechaza_variante_invalida_para_rapido(self):
+        queue = RecordingQueue()
+        response = self.make_client(queue=queue).post(
+            "/api/video/generate",
+            json={
+                "engine": "h3",
+                "mode": "i2v",
+                "profile": "rapido",
+                "variant": "vdn8",
+                "image_b64": PNG_B64,
+                "prompt": "prompt test",
+                "seconds": 8,
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("error", response.json())
+
 
     def test_h3_sin_variant_usa_turbo4_y_sage_false(self):
         queue = RecordingQueue()

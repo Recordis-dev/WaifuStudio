@@ -85,7 +85,12 @@ async def api_video_generate(request: Request, payload: dict = Body(...)) -> Any
     if "engine" in payload:
         engine_kind = payload.get("engine")
     else:
-        engine_kind = "h3" if payload.get("mode") == "ref2va" or payload.get("profile") == "ref2va" else "wan"
+        engine_kind = (
+            "h3"
+            if payload.get("mode") in ("ref2va", "v2v")
+            or payload.get("profile") == "ref2va"
+            else "wan"
+        )
     if engine_kind not in ("wan", "h3"):
         raise EngineError("engine invalido; usar wan|h3")
     mode = payload.get("mode") or ("ref2va" if payload.get("profile") == "ref2va" else "i2v")
@@ -129,15 +134,19 @@ async def api_video_generate(request: Request, payload: dict = Body(...)) -> Any
             raw_preset = raw_preset.strip()
         if raw_preset not in (None, "", PRESET_MANUAL):
             raise EngineError("preset de video solo aplica a engine wan")
-        req_profile = payload.get("profile") or ("ref2va" if mode in ("ref2va", "v2v") else None)
-        h3_profile = resolve_h3_profile(req_profile)
-        raw_variant = payload.get("variant")
+        if mode in ("ref2va", "v2v"):
+            effective_profile = "ref2va"
+            effective_variant = "vdn8"
+        else:
+            effective_profile = payload.get("profile")
+            effective_variant = payload.get("variant")
+        h3_profile = resolve_h3_profile(effective_profile)
         if h3_profile["id"] in ("vdn", "ref2va") and (
-            raw_variant is None
-            or (isinstance(raw_variant, str) and not raw_variant.strip())
+            effective_variant is None
+            or (isinstance(effective_variant, str) and not effective_variant.strip())
         ):
-            raw_variant = "vdn8"
-        h3_variant = resolve_h3_variant(raw_variant, profile=h3_profile["id"])
+            effective_variant = "vdn8"
+        h3_variant = resolve_h3_variant(effective_variant, profile=h3_profile["id"])
         validate_h3_profile_variant(h3_profile["id"], h3_variant["id"])
         if h3_profile["id"] == "vdn" and not _is_vdn_installed(cfg.comfy_root):
             raise EngineError(
@@ -232,6 +241,7 @@ async def api_video_generate(request: Request, payload: dict = Body(...)) -> Any
         ref_vid_bytes = _decode_image_b64(ref_video_b64, "ref_video")
         ref_vid_id = uuid.uuid4().hex
         ref_video_name = f"ref_vid_{ref_vid_id}.mp4"
+        input_dir.mkdir(parents=True, exist_ok=True)
         (input_dir / ref_video_name).write_bytes(ref_vid_bytes)
     image_name = _write_input_png(input_dir, first_raw) if first_raw is not None else None
     last_image_name = (
@@ -243,7 +253,7 @@ async def api_video_generate(request: Request, payload: dict = Body(...)) -> Any
         if not last_image_name and len(ref_image_names) > 1:
             last_image_name = ref_image_names[1]
     if engine_kind == "h3":
-        if mode == "v2v":
+        if mode in ("ref2va", "v2v"):
             template = h3_template_path(resolve_h3_profile("ref2va"))
         elif h3_profile["id"] == "personalizado" and payload.get("encoder") == "32b":
             template = APP_ROOT / "workflows" / "h3_fl2va_vertical.api.json"
