@@ -488,7 +488,21 @@ async function applySavedReference(params) {
 }
 
 async function reuseGeneration(item) {
+  if (!item) return;
   const params = item.params || {};
+  const isOtherTask = Boolean(params.task === "upscale" || params.task === "editor");
+  const isKnownModel = Boolean(
+    item.model_id &&
+    Array.isArray(state.models) &&
+    state.models.some((model) => model.id === item.model_id)
+  );
+  if (isOtherTask || !isKnownModel) {
+    const taskName = isOtherTask
+      ? (params.task === "upscale" ? "Upscaler" : "Editor")
+      : (params.task || item.model_id || "otra tarea");
+    setStatus(`Resultado de ${taskName}; ábrelo en su pestaña`, true);
+    return;
+  }
   const savedPrompt = String(item.prompt || "");
   if (savedPrompt) {
     const data = await postJson("/api/prompt/zones", { text: savedPrompt });

@@ -183,6 +183,24 @@ def _fit_reference(raw: bytes, width: int, height: int) -> bytes:
     return buffer.getvalue()
 
 
+def _validate_dimension(name: str, value: Any) -> tuple[int | None, str | None]:
+    """Valida que una dimension este en [64, 4096] y sea multiplo de 8."""
+    if value is None:
+        return None, None
+    if isinstance(value, bool):
+        return None, f"{name} invalido"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None, f"{name} invalido"
+    if not number.is_integer():
+        return None, f"{name} fuera de [64, 4096] o no multiplo de 8"
+    number = int(number)
+    if not 64 <= number <= 4096 or number % 8:
+        return None, f"{name} fuera de [64, 4096] o no multiplo de 8"
+    return number, None
+
+
 def run_generation(
     job: dict,
     *,
@@ -335,37 +353,27 @@ async def api_generate(request: Request, payload: dict = Body(...)) -> Any:
             )
     else:
         for name, value in (("width", width), ("height", height)):
-            if value is None:
-                continue
-            try:
-                number = float(value)
-            except (TypeError, ValueError):
-                return JSONResponse(
-                    status_code=400, content={"error": f"{name} invalido"}
-                )
-            if not number.is_integer():
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "error": f"{name} fuera de [64, 4096] o no multiplo de 8"
-                    },
-                )
-            number = int(number)
-            if not 64 <= number <= 4096 or number % 8:
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "error": f"{name} fuera de [64, 4096] o no multiplo de 8"
-                    },
-                )
+            val, err = _validate_dimension(name, value)
+            if err:
+                return JSONResponse(status_code=400, content={"error": err})
             if name == "width":
-                width = number
+                width = val
             else:
-                height = number
+                height = val
+    for name in ("width", "height"):
+        val, err = _validate_dimension(name, params.get(name))
+        if err:
+            return JSONResponse(status_code=400, content={"error": err})
+        if val is not None:
+            params[name] = val
     if width is not None:
         params = {**params, "width": width}
+    elif "width" in params:
+        width = params["width"]
     if height is not None:
         params = {**params, "height": height}
+    elif "height" in params:
+        height = params["height"]
     sampler_name = params.get("sampler_name")
     if sampler_name is not None and not is_valid_sampler(sampler_name):
         return JSONResponse(
