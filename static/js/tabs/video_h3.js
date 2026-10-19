@@ -286,6 +286,57 @@ function onH3ProfileChange() {
   updateH3Notes();
 }
 
+function fillH3Seconds() {
+  const secondsSelect = $("video-h3-seconds");
+  if (!secondsSelect) {
+    return;
+  }
+  const current = secondsSelect.value;
+  secondsSelect.replaceChildren();
+  const allSeconds = Array.isArray(state.videoH3Seconds) && state.videoH3Seconds.length
+    ? state.videoH3Seconds
+    : [5, 8, 10, 12, 15, 20, 25, 30];
+  for (const seconds of allSeconds) {
+    secondsSelect.appendChild(option(String(seconds), `${seconds} s`));
+  }
+  if (current && [...secondsSelect.options].some((opt) => opt.value === current)) {
+    secondsSelect.value = current;
+  } else {
+    setSelectValue(secondsSelect, String(defaultH3Seconds()));
+  }
+}
+
+function updateH3SecondsAvailability() {
+  const secondsSelect = $("video-h3-seconds");
+  if (!secondsSelect) {
+    return;
+  }
+  const mode = $("video-mode") ? $("video-mode").value : "i2v";
+  const isRestricted = mode === "ref2va" || mode === "v2v";
+  const allSeconds = Array.isArray(state.videoH3Seconds) && state.videoH3Seconds.length
+    ? state.videoH3Seconds
+    : [5, 8, 10, 12, 15, 20, 25, 30];
+  const currentVal = Number(secondsSelect.value);
+
+  const targetSeconds = isRestricted
+    ? allSeconds.filter((s) => Number(s) <= 15)
+    : allSeconds;
+
+  secondsSelect.replaceChildren();
+  for (const seconds of targetSeconds) {
+    secondsSelect.appendChild(option(String(seconds), `${seconds} s`));
+  }
+
+  if (isRestricted && currentVal > 15) {
+    setSelectValue(secondsSelect, String(defaultH3Seconds()));
+  } else if ([...secondsSelect.options].some((opt) => opt.value === String(currentVal))) {
+    secondsSelect.value = String(currentVal);
+  } else {
+    setSelectValue(secondsSelect, String(defaultH3Seconds()));
+  }
+  updateH3Notes();
+}
+
 async function loadH3Profiles() {
   const data = await api("/api/video/h3_profiles");
   state.videoH3Profiles = data.items || data.profiles || [];
@@ -309,16 +360,12 @@ async function loadH3Profiles() {
   }
   setSelectValue(profileSelect, "estandar");
   updateH3Variants();
-  const secondsSelect = $("video-h3-seconds");
-  secondsSelect.replaceChildren();
-  for (const seconds of state.videoH3Seconds) {
-    secondsSelect.appendChild(option(String(seconds), `${seconds} s`));
-  }
+  fillH3Seconds();
   fillH3Sizes();
   const estandarProfile = (state.videoH3Profiles || []).find((p) => p.id === "estandar");
   const defaultVar = (estandarProfile && estandarProfile.default_variant) || "vdn8";
   setSelectValue($("video-h3-variant"), defaultVar);
-  setSelectValue(secondsSelect, String(defaultH3Seconds()));
+  updateH3SecondsAvailability();
   updateH3Notes();
 }
 
@@ -435,6 +482,8 @@ export {
   h3FramesForSeconds,
   defaultH3Seconds,
   fillH3Sizes,
+  fillH3Seconds,
+  updateH3SecondsAvailability,
   selectedH3Size,
   updateH3Notes,
   updateH3Variants,

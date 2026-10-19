@@ -215,6 +215,7 @@ function updateEditorMode(options = {}) {
   if (edit && options.sync !== false) {
     syncEditorEditSource();
   }
+  applyEditorSizeSelection();
   updateEditorPreview();
 }
 
@@ -324,6 +325,37 @@ function setEditorProgress(progress) {
   setProgress(progress, "editor");
 }
 
+function getDefaultEditorFormat() {
+  const validFormats = (state.formats || []).filter((f) => {
+    const { width, height } = f;
+    return (
+      width >= EDITOR_SIZE_MIN &&
+      height >= EDITOR_SIZE_MIN &&
+      width <= EDITOR_SIZE_MAX &&
+      height <= EDITOR_SIZE_MAX &&
+      width % EDITOR_SIZE_STEP === 0 &&
+      height % EDITOR_SIZE_STEP === 0
+    );
+  });
+  const square = validFormats.find((f) => f.width === 1024 && f.height === 1024);
+  if (square) return square;
+  if (validFormats.length) return validFormats[0];
+  return { id: "cuadro_hd", width: 1024, height: 1024, label: "Cuadrado 1024x1024" };
+}
+
+function selectDefaultValidFormat(select) {
+  if (!select) return;
+  const defaultFmt = getDefaultEditorFormat();
+  if (defaultFmt && [...select.options].some((item) => item.value === defaultFmt.id)) {
+    select.value = defaultFmt.id;
+  } else {
+    const firstOption = [...select.options].find((opt) => opt.value !== "original" && opt.value !== "manual");
+    if (firstOption) {
+      select.value = firstOption.value;
+    }
+  }
+}
+
 function fillEditorSizes() {
   const select = $("editor-size");
   if (!select) {
@@ -352,11 +384,21 @@ function fillEditorSizes() {
   } else {
     select.value = "original";
   }
+  const isGenerate = $("editor-mode")?.value === "generate";
+  const hasRefs = Boolean(state.editorRefs && state.editorRefs.length > 0);
+  if (isGenerate && !hasRefs && select.value === "original") {
+    selectDefaultValidFormat(select);
+  }
   applyEditorSizeSelection();
 }
 
 function applyEditorSizeSelection() {
   const select = $("editor-size");
+  const isGenerate = $("editor-mode")?.value === "generate";
+  const hasRefs = Boolean(state.editorRefs && state.editorRefs.length > 0);
+  if (isGenerate && !hasRefs && select && select.value === "original") {
+    selectDefaultValidFormat(select);
+  }
   const val = select ? select.value : "manual";
   const manual = val === "manual";
   $("editor-manual-size").classList.toggle("hidden", !manual);
@@ -550,8 +592,20 @@ async function generateEditor() {
   const orientSelect = $("editor-res-orientation");
   const sizeSelect = $("editor-size");
   const isOriginal = (orientSelect && orientSelect.value === "original") || (sizeSelect && sizeSelect.value === "original");
+  const hasRefs = Boolean(state.editorRefs && state.editorRefs.length > 0);
   let sizePayload;
-  if (isOriginal) {
+  if (isOriginal && !hasRefs) {
+    const defaultFmt = getDefaultEditorFormat();
+    const width = defaultFmt ? defaultFmt.width : 1024;
+    const height = defaultFmt ? defaultFmt.height : 1024;
+    sizePayload = { width, height };
+    if (sizeSelect) {
+      if (defaultFmt && [...sizeSelect.options].some((opt) => opt.value === defaultFmt.id)) {
+        sizeSelect.value = defaultFmt.id;
+      }
+      applyEditorSizeSelection();
+    }
+  } else if (isOriginal) {
     sizePayload = { original: true };
   } else {
     const sizeChoice = sizeSelect ? sizeSelect.value : "manual";
@@ -646,7 +700,7 @@ function initEditorTab() {
   on("editor-recipe-mode", "change", () => {
     const mode = $("editor-recipe-mode")?.value;
     if (mode === "pose_nsfw") {
-      $("editor-cfg").value = "2.0";
+      $("editor-cfg").value = "3.0";
       updateEditorCfgNote();
     } else if (mode === "standard_sfw") {
       $("editor-cfg").value = "1.0";
