@@ -229,9 +229,9 @@ function updateH3Notes() {
 
 const PROFILE_COMPATIBLE_VARIANTS = {
   rapido: ["turbo4", "turbo8"],
-  estandar: ["turbo4", "turbo8"],
+  estandar: ["vdn8"],
   calidad: ["turbo4", "turbo8"],
-  ultra: ["vdn8"],
+  ultra: ["turbo4", "turbo8"],
   personalizado: ["turbo4", "turbo8", "vdn8"],
   ref2va: ["vdn8"],
   vdn: ["vdn8"],
@@ -242,7 +242,11 @@ const PROFILE_COMPATIBLE_VARIANTS = {
 function updateH3Variants() {
   const profileEl = $("video-h3-profile");
   const profile = profileEl ? profileEl.value : "estandar";
-  const allowed = PROFILE_COMPATIBLE_VARIANTS[profile] || ["turbo4", "turbo8"];
+  const profileObj = (state.videoH3Profiles || []).find((p) => p.id === profile);
+  const allowed =
+    (profileObj && profileObj.compatible_variants) ||
+    PROFILE_COMPATIBLE_VARIANTS[profile] ||
+    ["turbo4", "turbo8"];
   const variantSelect = $("video-h3-variant");
   if (!variantSelect) return;
   const currentVal = variantSelect.value;
@@ -256,7 +260,13 @@ function updateH3Variants() {
   }
   if (allowed.includes(currentVal)) {
     variantSelect.value = currentVal;
-  } else if (profile === "ultra" || profile === "vdn" || profile === "ref2va") {
+  } else if (
+    profileObj &&
+    profileObj.default_variant &&
+    allowed.includes(profileObj.default_variant)
+  ) {
+    variantSelect.value = profileObj.default_variant;
+  } else if (profile === "estandar" || profile === "vdn" || profile === "ref2va") {
     variantSelect.value = "vdn8";
   } else if (allowed.length > 0) {
     variantSelect.value = allowed[0];
@@ -287,8 +297,8 @@ async function loadH3Profiles() {
   for (const profile of state.videoH3Profiles) {
     let label = profile.label || profile.id;
     if (profile.available === false) {
-      label = profile.id === "ultra" || profile.id === "vdn"
-        ? "Ultra (8-Pasos VDN · Requiere Pesos)"
+      label = profile.id === "vdn"
+        ? "VDN (8-Pasos VDN · Requiere Pesos)"
         : `${label} (No disponible)`;
     }
     const opt = option(profile.id, label);
@@ -305,7 +315,9 @@ async function loadH3Profiles() {
     secondsSelect.appendChild(option(String(seconds), `${seconds} s`));
   }
   fillH3Sizes();
-  setSelectValue($("video-h3-variant"), "turbo8");
+  const estandarProfile = (state.videoH3Profiles || []).find((p) => p.id === "estandar");
+  const defaultVar = (estandarProfile && estandarProfile.default_variant) || "vdn8";
+  setSelectValue($("video-h3-variant"), defaultVar);
   setSelectValue(secondsSelect, String(defaultH3Seconds()));
   updateH3Notes();
 }

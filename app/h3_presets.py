@@ -359,7 +359,11 @@ def h3_catalog(comfy_root: Path | str | None = None) -> dict[str, Any]:
     profiles = []
     for p in catalog["profiles"].values():
         item = copy.deepcopy(p)
-        if item.get("id") == "vdn":
+        pid = item.get("id")
+        compat = PROFILE_COMPATIBLE_VARIANTS.get(pid, set())
+        item["compatible_variants"] = sorted(compat)
+        item["default_variant"] = "vdn8" if pid in ("estandar", "vdn", "ref2va") else "turbo8"
+        if pid == "vdn":
             item["available"] = vdn_ok
             if not vdn_ok:
                 item["missing_reason"] = "Pesos VDN no encontrados en ComfyUI/models/vdn"
