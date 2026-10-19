@@ -52,6 +52,10 @@ LOAD_IMAGE_CLASS = "LoadImage"
 LORA_LOADER_CLASS = "LoraLoaderModelOnly"
 REF_ID_PREFIX = "ref_"
 REF_IMAGE_KEY_PREFIX = "images.image_"
+VAE_LOADER_CLASS = "VAELoader"
+VAE_ENCODE_CLASS = "VAEEncode"
+PRESERVE_ENCODE_ID = "preserve_encode"
+EDITOR_PRESERVE_DENOISE = 0.65
 
 VALID_SAMPLERS = frozenset({"euler", "er_sde", "dpmpp_2m"})
 VALID_SCHEDULERS = frozenset({"simple", "beta", "normal", "karras"})
@@ -361,8 +365,9 @@ def prepare_editor_graph(
     EmptyLatentImage fija el tamano de salida. El KSampler recibe ``steps``
     (10-50) y ``cfg`` (1.0-10.0) ademas de la seed, sampler_name y scheduler.
     Cada referencia anade un LoadImage ``ref_N`` y su enlace ``images.image_N``
-    (hasta 10). Si preserve_structure=True y hay referencias, conecta la salida
-    latente del encoder a latent_image del KSampler.
+    (hasta 10). Si preserve_structure=True y hay referencias, codifica la primera
+    referencia mediante VAEEncode, conecta su salida a latent_image del KSampler y
+    fija denoise=0.65; en caso contrario, usa EmptyLatentImage y denoise=1.0.
     Los LoRAs opcionales se encadenan mediante LoraLoaderModelOnly.
     """
     if pose_preset:
@@ -398,6 +403,8 @@ def prepare_editor_graph(
             and node.get("class_type") == LOAD_IMAGE_CLASS
         ):
             del prepared[node_id]
+    if PRESERVE_ENCODE_ID in prepared:
+        del prepared[PRESERVE_ENCODE_ID]
 
     latent_id, latent = _find_node(prepared, LATENT_CLASS)
     for field in ("width", "height"):
@@ -425,7 +432,20 @@ def prepare_editor_graph(
         encode[f"{REF_IMAGE_KEY_PREFIX}{index}"] = [node_id, 0]
 
     if preserve_structure and refs:
-        sampler["latent_image"] = [encode_id, 2]
+        vae_id, _ = _find_node(prepared, VAE_LOADER_CLASS)
+        ref1_id = f"{REF_ID_PREFIX}1"
+        prepared[PRESERVE_ENCODE_ID] = {
+            "class_type": VAE_ENCODE_CLASS,
+            "inputs": {
+                "pixels": [ref1_id, 0],
+                "vae": [vae_id, 0],
+            },
+        }
+        sampler["latent_image"] = [PRESERVE_ENCODE_ID, 0]
+        sampler["denoise"] = EDITOR_PRESERVE_DENOISE
+    else:
+        sampler["latent_image"] = [latent_id, 0]
+        sampler["denoise"] = 1.0
 
     _apply_editor_loras(prepared, loras)
     return prepared
@@ -579,6 +599,7 @@ __all__ = [
     "EDITOR_DEFAULT_CFG",
     "EDITOR_DEFAULT_SIZE",
     "EDITOR_DEFAULT_STEPS",
+    "EDITOR_PRESERVE_DENOISE",
     "EDITOR_REF_LIMIT",
     "EDITOR_SEED_MAX",
     "EDITOR_STEPS_MAX",
@@ -587,6 +608,7 @@ __all__ = [
     "EDITOR_SIZE_MIN",
     "EDITOR_SIZE_STEP",
     "EDITOR_TEMPLATE_PATH",
+    "PRESERVE_ENCODE_ID",
     "QWEN_POSE_PRESETS",
     "VALID_SAMPLERS",
     "VALID_SCHEDULERS",
