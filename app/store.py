@@ -115,6 +115,22 @@ class Store:
             raise EngineError(f"store get {gen_id} fallo: {exc}") from exc
         return self._row_to_dict(row) if row is not None else None
 
+    @staticmethod
+    def _filters(
+        kind: str | None = None, q: str | None = None
+    ) -> tuple[str, list[Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if kind is not None:
+            clauses.append("kind = ?")
+            params.append(str(kind))
+        if q is not None and str(q).strip():
+            needle = f"%{str(q).strip()}%"
+            clauses.append("(prompt LIKE ? OR negative LIKE ?)")
+            params.extend([needle, needle])
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        return where_sql, params
+
     def list(
         self,
         limit: int = 50,
@@ -133,20 +149,12 @@ class Store:
             raise EngineError(
                 f"store list: orden invalido {order!r} (usa asc|desc)"
             )
-        clauses: list[str] = []
-        filters: list[Any] = []
-        if kind is not None:
-            clauses.append("kind = ?")
-            filters.append(str(kind))
-        if q is not None and str(q).strip():
-            needle = f"%{str(q).strip()}%"
-            clauses.append("(prompt LIKE ? OR negative LIKE ?)")
-            filters.extend([needle, needle])
-        where = f"WHERE {' AND '.join(clauses)} " if clauses else ""
+        where_sql, filters = self._filters(kind=kind, q=q)
+        where_part = f"{where_sql} " if where_sql else ""
         try:
             with closing(self._connect()) as conn, conn:
                 rows = conn.execute(
-                    f"SELECT {_COLUMNS} FROM generations {where}"
+                    f"SELECT {_COLUMNS} FROM generations {where_part}"
                     f"ORDER BY id {direction.upper()} LIMIT ? OFFSET ?",
                     (*filters, int(limit), int(offset)),
                 ).fetchall()
@@ -156,24 +164,59 @@ class Store:
 
     def count(self, kind: str | None = None, q: str | None = None) -> int:
         """Numero total de generaciones, opcionalmente filtrado por `kind` y `q`."""
-        clauses: list[str] = []
-        filters: list[Any] = []
-        if kind is not None:
-            clauses.append("kind = ?")
-            filters.append(str(kind))
-        if q is not None and str(q).strip():
-            needle = f"%{str(q).strip()}%"
-            clauses.append("(prompt LIKE ? OR negative LIKE ?)")
-            filters.extend([needle, needle])
-        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        where_sql, filters = self._filters(kind=kind, q=q)
+        where_part = f" {where_sql}" if where_sql else ""
         try:
             with closing(self._connect()) as conn, conn:
                 row = conn.execute(
-                    f"SELECT COUNT(*) FROM generations{where}", tuple(filters)
+                    f"SELECT COUNT(*) FROM generations{where_part}", tuple(filters)
                 ).fetchone()
         except sqlite3.Error as exc:
             raise EngineError(f"store count fallo: {exc}") from exc
         return int(row[0])
+
+    def page(
+        self,
+        kind: str | None = None,
+        q: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        order: str = "desc",
+    ) -> tuple[list[dict], int]:
+        """Generaciones paginadas y total en una sola conexion/consulta analitica.
+
+        Devuelve `(items, total)`. Si no hay filas coincidentes, `total` es 0.
+        """
+        direction = str(order).strip().lower()
+        if direction not in ("asc", "desc"):
+            raise EngineError(
+                f"store page: orden invalido {order!r} (usa asc|desc)"
+            )
+        where_sql, filters = self._filters(kind=kind, q=q)
+        where_part = f"{where_sql} " if where_sql else ""
+        try:
+            with closing(self._connect()) as conn, conn:
+                rows = conn.execute(
+                    f"SELECT {_COLUMNS}, COUNT(*) OVER() AS _total FROM generations {where_part}"
+                    f"ORDER BY id {direction.upper()} LIMIT ? OFFSET ?",
+                    (*filters, int(limit), int(offset)),
+                ).fetchall()
+                if rows:
+                    total = int(rows[0][10])
+                    items = [self._row_to_dict(row[:10]) for row in rows]
+                elif int(offset) > 0:
+                    where_count = f" {where_sql}" if where_sql else ""
+                    count_row = conn.execute(
+                        f"SELECT COUNT(*) FROM generations{where_count}", tuple(filters)
+                    ).fetchone()
+                    total = int(count_row[0]) if count_row else 0
+                    items = []
+                else:
+                    total = 0
+                    items = []
+        except sqlite3.Error as exc:
+            raise EngineError(f"store page fallo: {exc}") from exc
+        return items, total
 
     def delete(self, gen_id: int | str) -> bool:
         """Elimina una generacion por id; False si no existe."""

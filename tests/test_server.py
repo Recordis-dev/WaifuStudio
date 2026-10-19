@@ -250,6 +250,34 @@ class ReadRoutesTests(ServerTestCase):
         self.assertEqual(data["count"], 3)
         self.assertEqual([item["id"] for item in data["items"]], list(reversed(ids)))
 
+    def test_gallery_offset_y_total(self):
+        for index in range(5):
+            self.store.add(MODEL_ID, f"1girl {index}")
+        client = self.make_client()
+        res = client.get("/api/gallery?limit=2&offset=2")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["count"], 5)
+        self.assertEqual(len(data["items"]), 2)
+        for item in data["items"]:
+            self.assertNotIn("_total", item)
+
+        res_beyond = client.get("/api/gallery?limit=2&offset=10")
+        self.assertEqual(res_beyond.status_code, 200)
+        self.assertEqual(res_beyond.json()["count"], 5)
+        self.assertEqual(res_beyond.json()["items"], [])
+
+    def test_gallery_filtro_kind(self):
+        self.store.add(MODEL_ID, "image prompt", kind="image")
+        self.store.add(MODEL_ID, "video prompt", kind="video")
+        client = self.make_client()
+        res = client.get("/api/gallery?kind=video")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(len(data["items"]), 1)
+        self.assertEqual(data["items"][0]["kind"], "video")
+
 
 class LorasRouteTests(ServerTestCase):
     def test_loras_200_con_items_y_familias(self):

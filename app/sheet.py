@@ -58,6 +58,7 @@ def make_sheet(
     for index, path in enumerate(paths):
         try:
             with Image.open(path) as raw:
+                raw.draft("RGB", (inner[0], inner[1]))
                 tile = ImageOps.fit(raw.convert("RGB"), inner)
         except (OSError, ValueError) as exc:
             raise EngineError(f"hoja de referencia: imagen ilegible {path}: {exc}") from exc

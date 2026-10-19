@@ -184,7 +184,8 @@ export async function refreshTimelineMedia() {
   shelf.replaceChildren();
   const filter = ($("timeline-media-filter") && $("timeline-media-filter").value) || "";
   try {
-    const data = await api(`/api/gallery?limit=36${filter ? `&kind=${filter}` : ""}`);
+    // /api/gallery limita a un maximo de 24 items por pagina (CODE-JS-10)
+    const data = await api(`/api/gallery?limit=24${filter ? `&kind=${filter}` : ""}`);
     for (const item of (data.items || [])) {
       const isVideo = item.kind === "video";
       const url = resolveMediaUrl(item);
