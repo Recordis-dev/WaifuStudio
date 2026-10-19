@@ -30,6 +30,7 @@ from app.upscale import (
     parse_sharpen_method,
     parse_upscale_mode,
     resolve_upscale_model_file,
+    validate_video_upscale_dimensions,
 )
 
 router = APIRouter()
@@ -235,6 +236,13 @@ async def api_upscale(request: Request, payload: dict = Body(...)) -> Any:
                 source,
                 scale=entry["scale"],
                 passes=passes,
+                model_file=resolved_model,
+            )
+        elif source_kind == "video":
+            resolved_model = resolve_upscale_model_file(entry["file"], cfg)
+            validate_video_upscale_dimensions(
+                source,
+                scale=entry["scale"],
                 model_file=resolved_model,
             )
     input_dir = cfg.comfy_input_dir

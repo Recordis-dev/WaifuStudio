@@ -31,7 +31,9 @@ import copy
 import io
 import json
 import math
+import os
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
@@ -46,6 +48,9 @@ CATALOG_VERSION = 1
 MIN_UPSCALE_SCALE = 1
 MAX_UPSCALE_INPUT_SIDE = 2560
 MAX_UPSCALE_OUTPUT_SIDE = 4096
+MAX_VIDEO_UPSCALE_INPUT_SIDE = 1920
+MAX_VIDEO_UPSCALE_OUTPUT_SIDE = 3840  # 2160p (4K UHD)
+MAX_VIDEO_UPSCALE_FRAMES = 500  # Presupuesto maximo de fotogramas batch (12 GB VRAM)
 IMAGE_EXT = ("png",)
 VIDEO_EXT = ("mp4", "webm")
 DEFAULT_PREFIX = "waifu/upscale"
@@ -447,6 +452,170 @@ def clamp_or_validate_upscale_dimensions(
     if passes == 2 and max(width, height) * (effective_scale ** 2) > MAX_UPSCALE_OUTPUT_SIDE:
         return 1
     return passes
+
+
+def probe_video_metadata(
+    video_path: Path | str,
+    *,
+    ffprobe_bin: str | Path | None = None,
+) -> dict[str, Any]:
+    """Obtiene metadatos basicos de un archivo de video (ancho, alto, frames, duracion, fps).
+
+    Prioridad de deteccion:
+    1. ffprobe CLI (via subprocess) si esta instalado o especificado.
+    2. cv2 (OpenCV) si esta disponible en el entorno.
+    3. av (PyAV) si esta disponible en el entorno.
+    """
+    path = Path(video_path)
+    if not path.is_file():
+        return {"width": 0, "height": 0, "frames": 0, "duration": 0.0, "fps": 0.0}
+
+    # 1. ffprobe CLI
+    exe = str(ffprobe_bin) if ffprobe_bin else (
+        os.environ.get("FFPROBE_PATH")
+        or shutil.which("ffprobe")
+        or (str(APP_ROOT / "tools" / "ffmpeg" / "ffprobe.exe") if (APP_ROOT / "tools" / "ffmpeg" / "ffprobe.exe").is_file() else None)
+    )
+    if exe:
+        try:
+            cmd = [
+                exe,
+                "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=width,height,nb_frames,duration,r_frame_rate",
+                "-of", "json",
+                str(path),
+            ]
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            if proc.returncode == 0 and proc.stdout:
+                data = json.loads(proc.stdout)
+                streams = data.get("streams") or []
+                if streams:
+                    s = streams[0]
+                    w = int(s.get("width") or 0)
+                    h = int(s.get("height") or 0)
+                    nb_frames = int(s.get("nb_frames") or 0)
+                    dur = float(s.get("duration") or 0.0)
+                    fps_val = 0.0
+                    r_fps = s.get("r_frame_rate")
+                    if r_fps and "/" in str(r_fps):
+                        num, den = str(r_fps).split("/", 1)
+                        fps_val = float(num) / float(den) if float(den) else 0.0
+                    elif r_fps:
+                        fps_val = float(r_fps)
+                    if nb_frames == 0 and dur > 0 and fps_val > 0:
+                        nb_frames = int(dur * fps_val)
+                    if w > 0 and h > 0:
+                        return {
+                            "width": w,
+                            "height": h,
+                            "frames": nb_frames,
+                            "duration": dur,
+                            "fps": fps_val,
+                        }
+        except Exception:
+            pass
+
+    # 2. cv2 fallback
+    try:
+        import cv2
+        cap = cv2.VideoCapture(str(path))
+        if cap.isOpened():
+            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+            fps_val = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+            frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            cap.release()
+            if w > 0 and h > 0:
+                dur = (frames / fps_val) if fps_val > 0 and frames > 0 else 0.0
+                return {
+                    "width": w,
+                    "height": h,
+                    "frames": frames,
+                    "duration": dur,
+                    "fps": fps_val,
+                }
+    except Exception:
+        pass
+
+    # 3. av fallback
+    try:
+        import av
+        with av.open(str(path)) as container:
+            for stream in container.streams.video:
+                w = int(stream.width or 0)
+                h = int(stream.height or 0)
+                frames = int(stream.frames or 0)
+                dur = float(stream.duration * stream.time_base) if stream.duration and stream.time_base else 0.0
+                fps_val = float(stream.average_rate) if stream.average_rate else 0.0
+                if w > 0 and h > 0:
+                    return {
+                        "width": w,
+                        "height": h,
+                        "frames": frames,
+                        "duration": dur,
+                        "fps": fps_val,
+                    }
+    except Exception:
+        pass
+
+    return {"width": 0, "height": 0, "frames": 0, "duration": 0.0, "fps": 0.0}
+
+
+def validate_video_upscale_dimensions(
+    video_path: Path | str,
+    *,
+    scale: int = 2,
+    model_file: str | None = None,
+    ffprobe_bin: str | Path | None = None,
+) -> dict[str, Any]:
+    """Valida que la resolucion y cantidad de fotogramas del video no excedan la VRAM (12 GB).
+
+    Lanza EngineError (HTTP 400) si:
+    - El lado mayor supera MAX_VIDEO_UPSCALE_INPUT_SIDE (1920 px)
+    - La resolucion esperada de salida supera MAX_VIDEO_UPSCALE_OUTPUT_SIDE (3840 px / 2160p)
+    - El numero de fotogramas supera MAX_VIDEO_UPSCALE_FRAMES (500 fotogramas)
+    """
+    path = Path(video_path)
+    if not path.is_file():
+        raise EngineError(f"Archivo de video no encontrado: {path}")
+
+    meta = probe_video_metadata(path, ffprobe_bin=ffprobe_bin)
+    width = meta.get("width", 0)
+    height = meta.get("height", 0)
+    frames = meta.get("frames", 0)
+
+    if width <= 0 or height <= 0:
+        return meta
+
+    if max(width, height) > MAX_VIDEO_UPSCALE_INPUT_SIDE:
+        raise EngineError(
+            f"El video de entrada es demasiado grande para escalar ({width}x{height} px; "
+            f"maximo permitido de entrada: {MAX_VIDEO_UPSCALE_INPUT_SIDE} px en el lado mayor). "
+            f"Para 12 GB de VRAM reduzca la resolucion a 1080p o inferior antes de escalar."
+        )
+
+    effective_scale = (
+        2
+        if model_file == "RealESRGAN_x2.pth"
+        else (scale if isinstance(scale, int) and scale > 0 else 2)
+    )
+
+    out_side = max(width, height) * effective_scale
+    if out_side > MAX_VIDEO_UPSCALE_OUTPUT_SIDE:
+        raise EngineError(
+            f"El escalado solicitado ({width}x{height} px x {effective_scale} = {width*effective_scale}x{height*effective_scale} px) "
+            f"supera el limite de salida permitido para 12 GB VRAM ({MAX_VIDEO_UPSCALE_OUTPUT_SIDE} px / 2160p)."
+        )
+
+    if frames > MAX_VIDEO_UPSCALE_FRAMES:
+        raise EngineError(
+            f"El video tiene demasiados fotogramas ({frames} frames; "
+            f"maximo permitido para escalado en batch: {MAX_VIDEO_UPSCALE_FRAMES} frames). "
+            f"Reduzca la duracion del clip antes de escalar."
+        )
+
+    return meta
 
 
 def _require_plain_name(value: Any, label: str) -> str:
@@ -1112,6 +1281,14 @@ def run_video_upscale(
         job["rife_model"] = rife_model
         job["params"] = _video_upscale_params(job)
         model_file = resolve_upscale_model_file(job.get("model_file"), config)
+        if config and hasattr(config, "comfy_input_dir") and job.get("video_name"):
+            input_video_path = Path(config.comfy_input_dir) / job.get("video_name")
+            if input_video_path.is_file():
+                validate_video_upscale_dimensions(
+                    input_video_path,
+                    scale=job.get("scale", 2),
+                    model_file=model_file,
+                )
         graph = build_video_upscale_graph(
             job.get("video_name"),
             model_file,
@@ -1315,6 +1492,11 @@ __all__ = [
     "IMAGE_EXT",
     "LOAD_IMAGE_ID",
     "LOAD_VIDEO_ID",
+    "MAX_UPSCALE_INPUT_SIDE",
+    "MAX_UPSCALE_OUTPUT_SIDE",
+    "MAX_VIDEO_UPSCALE_FRAMES",
+    "MAX_VIDEO_UPSCALE_INPUT_SIDE",
+    "MAX_VIDEO_UPSCALE_OUTPUT_SIDE",
     "MIN_UPSCALE_SCALE",
     "MODEL_LOADER_ID",
     "RIFE_CLASS",
@@ -1342,6 +1524,7 @@ __all__ = [
     "build_image_upscale_graph",
     "build_upscale_graph",
     "build_video_upscale_graph",
+    "clamp_or_validate_upscale_dimensions",
     "fps_ckpt",
     "fps_multiplier",
     "frame_interpolation",
@@ -1355,10 +1538,12 @@ __all__ = [
     "parse_sharpen",
     "parse_sharpen_method",
     "parse_upscale_mode",
+    "probe_video_metadata",
     "resolve_upscale_model_file",
     "run_fps",
     "run_upscale",
     "run_upscale_generation",
     "run_video_upscale",
     "upscalers",
+    "validate_video_upscale_dimensions",
 ]
