@@ -1,4 +1,4 @@
-# AGENTS.md — Guía de Instalación, Diagnóstico y Desarrollo para Agentes IA (WaifuStudio v1.9.0)
+# AGENTS.md — Guía de Instalación, Diagnóstico y Desarrollo para Agentes IA (WaifuStudio v2.0.0 — remediación 2026-10-18)
 
 Este archivo es la autoridad técnica embebida del repositorio **WaifuStudio** (versión compactada del plano de control `.agents`). Tiene dos propósitos:
 1. **Asistir al usuario final** en la instalación, configuración y resolución de problemas en máquinas Windows con GPUs NVIDIA RTX 3000 / 4000 / 5000 (8 GB+ VRAM).
@@ -54,7 +54,7 @@ El instalador está diseñado en **Modo Hermético 100% Portable** para no colis
 2. **Prohibido leer archivos >300 líneas completos**: Consulta primero las tablas de las secciones 4, 5 y 6 de este documento, localiza el símbolo con `grep` / `Select-String` y lee únicamente el rango necesario (`offset`, `limit=80`).
 3. **Verificación obligatoria antes de cerrar cambios**:
    ```powershell
-   & .\.venv\Scripts\python.exe -m unittest discover -s tests   # 1.525 tests offline en CPU (~50 s)
+   & .\.venv\Scripts\python.exe -m unittest discover -s tests   # 1.611 tests offline en CPU (~58 s)
    node tests/test_upscale_compare_logic.mjs                    # 10 tests de lógica JS del comparador
    & .\.venv\Scripts\python.exe -m app.health                   # Diagnóstico de rutas y servicios
    ```
@@ -100,9 +100,9 @@ El instalador está diseñado en **Modo Hermético 100% Portable** para no colis
 
 ## 6. Rangos de Líneas de `templates/index.html` y Cascada CSS
 
-- **Secciones en `templates/index.html` (no leer entero)**:
-  - `L1–L45`: Header global (`#btn-universal-reload`, `#btn-language-selector`) y `<nav class="tabs">`.
-  - `L46–L319`: `#panel-image` | `L320–L609`: `#panel-video` | `L610–L757`: `#panel-editor` | `L758–L874`: `#panel-upscaler` | `L875–L903`: `#panel-gallery` | `L904–L978`: `#panel-test`.
-  - `L979–L1162`: Modales OC (`#oc-modal`, `#oc-save-modal`, `#oc-train-modal`) | `L1163–L1341`: Modales LoRA (`#lora-modal`, `#lora-library-modal`) | `L1342–L1380`: `#lightbox` y scripts.
+- **Secciones en `templates/index.html` (1.699 líneas; no leer entero)**:
+  - `L1–L49`: Header global (`#btn-universal-reload`, `#btn-language-selector`) y `<nav class="tabs">`.
+  - `L50–L324`: `#panel-image` | `L325–L614`: `#panel-video` | `L615–L787`: `#panel-editor` | `L788–L1039`: `#panel-upscaler` | `L1040–L1253`: `#panel-gallery` | `L1254–L1328`: `#panel-test`.
+  - `L1329–L1512`: Modales OC (`#oc-modal`, `#oc-save-modal`, `#oc-train-modal`) | `L1513–L1691`: Modales LoRA (`#lora-modal`, `#lora-library-modal`) | `L1692–L1699`: `#lightbox` y scripts.
 - **Orden de Cascada CSS (`static/css/`)**:
   `1. base.css` → `2. components.css` → `3. tabs/image.css` → `4. tabs/video.css` → `5. tabs/editor.css` → `6. tabs/upscaler.css` → `7. tabs/gallery.css` → `8. tabs/test_lab.css`.
