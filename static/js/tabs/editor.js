@@ -45,6 +45,42 @@ import { switchTab } from "../main.js";
 import { ResolutionKit } from "../components/resolution_kit.js";
 
 let editorResolutionKit = null;
+let pendingEditorLoras = null;
+let editorLorasLoaded = false;
+
+async function loadEditorLoras() {
+  const select = $("editor-loras");
+  if (!select) {
+    return;
+  }
+  try {
+    const data = await api("/api/loras?scan=0");
+    const items = Array.isArray(data) ? data : data?.items || [];
+    const currentSelected = new Set(
+      pendingEditorLoras !== null
+        ? pendingEditorLoras
+        : [...select.selectedOptions].map((o) => o.value)
+    );
+    select.replaceChildren();
+    const seen = new Set();
+    for (const item of items) {
+      if (!item || !item.id || seen.has(item.id)) {
+        continue;
+      }
+      seen.add(item.id);
+      const opt = option(item.id, item.display_name || item.id);
+      if (currentSelected.has(item.id)) {
+        opt.selected = true;
+      }
+      select.appendChild(opt);
+    }
+  } catch (_error) {
+    select.replaceChildren();
+  } finally {
+    editorLorasLoaded = true;
+    pendingEditorLoras = null;
+  }
+}
 
 
 function setEditorBanner(installed) {
@@ -276,6 +312,27 @@ function applyEditorMetadata(meta) {
   if (meta.cfg != null && Number.isFinite(cfg)) {
     $("editor-cfg").value = String(cfg);
     updateEditorCfgNote();
+  }
+  if (meta.loras != null) {
+    const rawLoras = Array.isArray(meta.loras) ? meta.loras : [meta.loras];
+    const loraIds = rawLoras
+      .map((entry) => {
+        if (typeof entry === "string") return entry;
+        if (entry && (entry.id != null || entry.lora_name != null)) {
+          return String(entry.id != null ? entry.id : entry.lora_name);
+        }
+        return null;
+      })
+      .filter(Boolean);
+    const select = $("editor-loras");
+    if (!editorLorasLoaded || !select || select.options.length === 0) {
+      pendingEditorLoras = loraIds;
+    } else {
+      const idSet = new Set(loraIds);
+      for (const opt of select.options) {
+        opt.selected = idSet.has(opt.value);
+      }
+    }
   }
   if (meta.original_size === true) {
     setSelectValue($("editor-size"), "original");
@@ -663,6 +720,10 @@ async function generateEditor() {
   if (posePreset) {
     payload.pose_preset = posePreset;
   }
+  const loras = [...$("editor-loras").selectedOptions].map((o) => ({ id: o.value, weight: 1.0 }));
+  if (loras.length) {
+    payload.loras = loras;
+  }
   if (state.editorRefs.length) {
     payload.ref_images_b64 = state.editorRefs.map((ref) => ref.b64);
   }
@@ -716,6 +777,7 @@ function initEditorTab() {
   });
   on("btn-editor-generate", "click", generateEditor);
   on("editor-size", "change", applyEditorSizeSelection);
+  loadEditorLoras().catch(() => {});
 
   const orient = $("editor-res-orientation");
   const qual = $("editor-res-quality");
@@ -823,4 +885,5 @@ export {
   downloadEditorResult,
   generateEditor,
   initEditorTab,
+  loadEditorLoras,
 };
