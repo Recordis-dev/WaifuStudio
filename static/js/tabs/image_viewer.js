@@ -46,7 +46,7 @@ function updateImagePreview() {
     }
   }
   $("image-preview").classList.toggle("has-image", Boolean(url));
-  $("btn-save-to-oc").disabled = !item;
+  $("btn-save-to-oc").disabled = !(item && item.kind === "image" && url);
   const describeButton = $("btn-describe-image");
   if (describeButton) {
     describeButton.disabled = !(item && item.kind === "image" && url);

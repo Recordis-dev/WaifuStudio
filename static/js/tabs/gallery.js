@@ -365,10 +365,7 @@ async function submitCustomTag(event) {
   const category = catInput.value;
   const count = parseInt(countInput.value, 10) || 100;
   try {
-    await api("/api/tags/custom", {
-      method: "POST",
-      body: { name, category, count },
-    });
+    await postJson("/api/tags/custom", { name, category, count });
     nameInput.value = "";
     $("custom-tags-status").textContent = `Tag "${name}" guardada`;
     await refreshCustomTagsList();

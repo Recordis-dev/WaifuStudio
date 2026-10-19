@@ -33,6 +33,7 @@ import {
   updateH3Notes,
   updateH3Variants,
   updateVideoDurationInfo,
+  updateH3SecondsAvailability,
 } from "./video_h3.js";
 
 let v2vPreviewObjectUrl = null;
@@ -598,6 +599,7 @@ function applyVideoEngine() {
     setSelectValue($("video-h3-profile"), "estandar");
   }
   updateH3Variants();
+  updateH3SecondsAvailability();
   updateH3Notes();
 }
 

@@ -533,6 +533,11 @@ async function reuseGeneration(item) {
   } catch (error) {
     warning = error.message;
   }
+  // BUG-IMAGE-01: Usar general_prompt si es string; de lo contrario dejarlo vacío
+  const promptGeneral = $("prompt-general");
+  if (promptGeneral) {
+    promptGeneral.value = typeof params.general_prompt === "string" ? params.general_prompt : "";
+  }
   if (warning) {
     setStatus(`Cargado #${item.id} · ${warning}`, true);
   } else {
