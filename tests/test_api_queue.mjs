@@ -248,4 +248,27 @@ console.log("=== Ejecutando pruebas unitarias de recuperación de cola frontend 
   console.log("✔ Test 5: Timeout en polling procesa siguiente trabajo y resetea flags");
 }
 
+// Test 6: api() extrae `detail` de FastAPI en respuestas de error (HTTP 409) y mantiene status
+{
+  globalThis.fetch = async () => {
+    return {
+      ok: false,
+      status: 409,
+      json: async () => ({ detail: "motivo" }),
+    };
+  };
+
+  let caughtError = null;
+  try {
+    await api("/api/test-conflict");
+  } catch (err) {
+    caughtError = err;
+  }
+
+  assert.ok(caughtError, "api() debe rechazar cuando response.ok es false");
+  assert.equal(caughtError.status, 409, "El error debe mantener el status HTTP 409");
+  assert.equal(caughtError.message, "motivo", "Error.message debe coincidir con data.detail");
+  console.log("✔ Test 6: api() extrae detail de FastAPI en HTTP 409 y mantiene status");
+}
+
 console.log("=== TODOS LOS TESTS DE RECUPERACIÓN DE COLA PASARON EXITOSAMENTE ===");
