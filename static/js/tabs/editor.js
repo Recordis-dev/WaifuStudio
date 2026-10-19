@@ -228,7 +228,9 @@ function updateEditorPreview() {
   const empty = $("editor-preview-empty");
   const edit = $("editor-mode").value === "edit";
   const refUrl = state.editorRefs.length ? state.editorRefs[0].url : "";
-  const url = refUrl || state.editorResultUrl || "";
+  const url = edit
+    ? (refUrl || state.editorResultUrl || "")
+    : (state.editorResultUrl || refUrl || "");
   if (url) {
     if (editorCompareActive) {
       image.removeAttribute("src");

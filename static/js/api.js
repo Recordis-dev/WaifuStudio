@@ -35,7 +35,9 @@ async function api(path, options = {}) {
       data = null;
     }
     if (!response.ok) {
-      const error = new Error(data && data.error ? data.error : `HTTP ${response.status}`);
+      const error = new Error(
+        data?.error || data?.detail || `HTTP ${response.status}`
+      );
       error.status = response.status;
       throw error;
     }
