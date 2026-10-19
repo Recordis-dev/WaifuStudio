@@ -85,3 +85,9 @@
   justify-content: flex-start;
   margin-top: 0.5rem;
 }
+
+#editor-loras {
+  width: 100%;
+  height: auto;
+}
+
