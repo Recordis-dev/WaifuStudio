@@ -15,7 +15,9 @@ async function api(path, options = {}) {
     data = null;
   }
   if (!response.ok) {
-    throw new Error(data && data.error ? data.error : `HTTP ${response.status}`);
+    const error = new Error(data && data.error ? data.error : `HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
   return data;
 }
@@ -149,33 +151,53 @@ async function enqueueJobs(jobIds, options = {}) {
     (async () => {
       state.jobQueueRunning = true;
       state.busy = true;
-      while (state.jobQueue.length > 0) {
-        const item = state.jobQueue.shift();
-        state.activeJobsCount = state.jobQueue.length + 1;
-        window.dispatchEvent(
-          new CustomEvent("waifu:queue-updated", { detail: { count: state.activeJobsCount } })
-        );
+      try {
+        while (state.jobQueue.length > 0) {
+          const item = state.jobQueue.shift();
+          state.activeJobsCount = state.jobQueue.length + 1;
+          window.dispatchEvent(
+            new CustomEvent("waifu:queue-updated", { detail: { count: state.activeJobsCount } })
+          );
 
-        await pollJob(
-          item.jobId,
-          item.statusFn,
-          item.onDone,
-          item.progressFn,
-          item.manageCancel,
-          item.cancelButtonId
-        );
+          try {
+            await pollJob(
+              item.jobId,
+              item.statusFn,
+              item.onDone,
+              item.progressFn,
+              item.manageCancel,
+              item.cancelButtonId
+            );
+          } catch (jobError) {
+            console.error(`[enqueueJobs] Error durante el polling del trabajo ${item.jobId}:`, jobError);
+            if (item.statusFn) {
+              item.statusFn(`Error: ${jobError && jobError.message ? jobError.message : "Fallo de conexión"}`, true);
+            }
+            if (item.onDone) {
+              try {
+                await item.onDone({
+                  status: "error",
+                  error: jobError && jobError.message ? jobError.message : "Fallo de conexión",
+                });
+              } catch (onDoneErr) {
+                console.error("[enqueueJobs] Error en callback onDone:", onDoneErr);
+              }
+            }
+          }
 
-        state.activeJobsCount = state.jobQueue.length + (state.jobQueue.length > 0 ? 1 : 0);
+          state.activeJobsCount = state.jobQueue.length + (state.jobQueue.length > 0 ? 1 : 0);
+          window.dispatchEvent(
+            new CustomEvent("waifu:queue-updated", { detail: { count: state.activeJobsCount } })
+          );
+        }
+      } finally {
+        state.busy = false;
+        state.jobQueueRunning = false;
+        state.activeJobsCount = 0;
         window.dispatchEvent(
-          new CustomEvent("waifu:queue-updated", { detail: { count: state.activeJobsCount } })
+          new CustomEvent("waifu:queue-updated", { detail: { count: 0 } })
         );
       }
-      state.busy = false;
-      state.jobQueueRunning = false;
-      state.activeJobsCount = 0;
-      window.dispatchEvent(
-        new CustomEvent("waifu:queue-updated", { detail: { count: 0 } })
-      );
     })();
   }
 }
