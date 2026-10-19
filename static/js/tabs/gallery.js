@@ -30,7 +30,12 @@ import {
   updateEditorControls,
 } from "./editor.js";
 import { attachReferenceFromUrl } from "../components/prompt_popover.js";
-import { attachVideoFrameFromUrl, attachFileInputFromUrl } from "./video.js";
+import {
+  attachVideoFrameFromUrl,
+  attachFileInputFromUrl,
+  applyVideoEngine,
+  clearVideoRefs,
+} from "./video.js";
 import { reuseGeneration } from "./image.js";
 
 let galleryModalItem = null;
@@ -395,6 +400,26 @@ async function useGalleryItemAsReference(item) {
 async function animateGalleryItem(item) {
   closeGalleryModal();
   switchTab("video");
+  if ($("video-mode")) {
+    $("video-mode").value = "i2v";
+  }
+  if ($("video-last-image")) {
+    $("video-last-image").value = "";
+  }
+  const v2vInput = $("video-v2v-input");
+  if (v2vInput) {
+    v2vInput.value = "";
+  }
+  const v2vWrap = $("video-v2v-preview-wrap");
+  if (v2vWrap) {
+    v2vWrap.classList.add("hidden");
+  }
+  const v2vPreview = $("video-v2v-preview");
+  if (v2vPreview) {
+    v2vPreview.src = "";
+  }
+  clearVideoRefs();
+  applyVideoEngine();
   const name =
     ((item.outputs || [])[0]) || "galeria-" + item.id + ".png";
   await attachFileInputFromUrl("video-image", galleryItemUrl(item), name);

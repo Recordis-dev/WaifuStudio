@@ -2158,6 +2158,18 @@ class GenerateSizeTests(ServerTestCase):
         self.assertEqual(queue.jobs[0]["params"]["width"], 64)
         self.assertEqual(queue.jobs[0]["params"]["height"], 4096)
 
+    def test_params_medidas_invalidas_400(self):
+        queue = RecordingQueue()
+        for key in ("width", "height"):
+            with self.subTest(key=key):
+                response = self.make_client(queue=queue).post(
+                    "/api/generate",
+                    json=self.payload(params={key: 8192}),
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("error", response.json())
+                self.assertEqual(len(queue.jobs), 0)
+
 
 class GenerateEngineParamsValidationTests(ServerTestCase):
     def payload(self, params: dict) -> dict:

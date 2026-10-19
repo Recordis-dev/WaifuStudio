@@ -226,8 +226,18 @@ function initImageViewer() {
   on("btn-toggle-image-thumbs", "click", () =>
     toggleThumbs("image-thumbs", "btn-toggle-image-thumbs")
   );
-  window.addEventListener("waifu:queue-updated", () => {
-    reloadImageViewerFirstPage().catch(() => {});
+  window.addEventListener("waifu:queue-updated", (event) => {
+    const detail = event && event.detail;
+    if (detail && detail.kind && detail.kind !== "image") {
+      return;
+    }
+    const currentTab = state.activeTab ?? ($("panel-image")?.classList.contains("active") ? "image" : "");
+    if (currentTab !== "image") {
+      return;
+    }
+    // Recarga la página actual sin forzar página 1 ni reelección forzada;
+    // la recarga tras finalizar la generación propia se gestiona vía onDone: reloadImageViewerFirstPage en image.js
+    loadImageViewer().catch(() => {});
   });
 }
 
