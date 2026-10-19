@@ -52,15 +52,16 @@ async def api_gallery(
         )
     limit = max(1, min(int(limit), 24))
     offset = max(0, int(offset))
+    rows, total = st.page(limit=limit, offset=offset, order="desc", kind=kind, q=q)
     items = []
-    for row in st.list(limit=limit, offset=offset, order="desc", kind=kind, q=q):
+    for row in rows:
         item = dict(row)
         item["urls"] = [
             MEDIA_URL.format(gen_id=row["id"], name=name)
             for name in (row.get("outputs") or [])
         ]
         items.append(item)
-    return {"items": items, "count": st.count(kind=kind, q=q)}
+    return {"items": items, "count": total}
 
 
 @router.delete("/api/gallery/{id}")

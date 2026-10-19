@@ -134,6 +134,21 @@ class MakeSheetTests(SheetTestCase):
         make_sheet(paths, self.root / "sheet.png")
         self.assertEqual([path.read_bytes() for path in paths], before)
 
+    def test_jpeg_draft_y_generacion_correcta(self):
+        jpg1 = self.root / "src" / "1.jpg"
+        jpg2 = self.root / "src" / "2.jpg"
+        jpg1.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (800, 1200), (200, 50, 50)).save(jpg1, format="JPEG")
+        Image.new("RGB", (800, 1200), (50, 200, 50)).save(jpg2, format="JPEG")
+
+        out = self.root / "sheet_jpg.png"
+        result = make_sheet([jpg1, jpg2], out)
+        self.assertEqual(result, out)
+        self.assertTrue(out.is_file())
+        with Image.open(out) as image:
+            self.assertEqual(image.format, "PNG")
+            self.assertEqual(image.size, (512, 384))
+
 
 if __name__ == "__main__":
     unittest.main()

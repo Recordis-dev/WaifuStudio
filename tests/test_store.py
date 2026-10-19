@@ -283,6 +283,96 @@ class DeleteTests(StoreTestCase):
         self.assertEqual(self.store.count(q="nonexistent"), 0)
 
 
+class PageTests(StoreTestCase):
+    def test_filters_helper(self):
+        where, params = Store._filters()
+        self.assertEqual(where, "")
+        self.assertEqual(params, [])
+
+        where, params = Store._filters(kind="image")
+        self.assertEqual(where, "WHERE kind = ?")
+        self.assertEqual(params, ["image"])
+
+        where, params = Store._filters(q="cat")
+        self.assertEqual(where, "WHERE (prompt LIKE ? OR negative LIKE ?)")
+        self.assertEqual(params, ["%cat%", "%cat%"])
+
+        where, params = Store._filters(kind="video", q="dog")
+        self.assertEqual(where, "WHERE kind = ? AND (prompt LIKE ? OR negative LIKE ?)")
+        self.assertEqual(params, ["video", "%dog%", "%dog%"])
+
+    def test_page_vacia(self):
+        items, total = self.store.page()
+        self.assertEqual(items, [])
+        self.assertEqual(total, 0)
+
+    def test_page_total_correcto_con_offset(self):
+        for index in range(5):
+            self.store.add("m", f"prompt {index}")
+        items, total = self.store.page(limit=2, offset=0, order="asc")
+        self.assertEqual(total, 5)
+        self.assertEqual([row["id"] for row in items], [1, 2])
+        self.assertNotIn("_total", items[0])
+
+        items, total = self.store.page(limit=2, offset=2, order="asc")
+        self.assertEqual(total, 5)
+        self.assertEqual([row["id"] for row in items], [3, 4])
+
+        items, total = self.store.page(limit=2, offset=4, order="asc")
+        self.assertEqual(total, 5)
+        self.assertEqual([row["id"] for row in items], [5])
+
+        # offset mas alla del total: fallback de conteo con la misma conexion
+        items, total = self.store.page(limit=2, offset=10, order="asc")
+        self.assertEqual(total, 5)
+        self.assertEqual(items, [])
+
+    def test_page_filtro_kind_y_q(self):
+        self.store.add("m", "cat girl outdoors", negative="bad quality", kind="image")
+        self.store.add("m", "cyberpunk street", negative="blurry", kind="video")
+        self.store.add("m", "cat robot", negative="none", kind="video")
+
+        items, total = self.store.page(kind="video", order="asc")
+        self.assertEqual(total, 2)
+        self.assertEqual([row["prompt"] for row in items], ["cyberpunk street", "cat robot"])
+
+        items, total = self.store.page(q="cat", order="asc")
+        self.assertEqual(total, 2)
+        self.assertEqual([row["prompt"] for row in items], ["cat girl outdoors", "cat robot"])
+
+        items, total = self.store.page(kind="video", q="cat", order="asc")
+        self.assertEqual(total, 1)
+        self.assertEqual([row["prompt"] for row in items], ["cat robot"])
+
+        items, total = self.store.page(q="inexistente")
+        self.assertEqual(total, 0)
+        self.assertEqual(items, [])
+
+    def test_page_una_sola_llamada_conexion(self):
+        for index in range(3):
+            self.store.add("m", f"prompt {index}")
+
+        from unittest.mock import patch
+        with patch.object(self.store, "_connect", wraps=self.store._connect) as mock_conn:
+            items, total = self.store.page(limit=2, offset=0)
+            self.assertEqual(mock_conn.call_count, 1)
+            self.assertEqual(total, 3)
+            self.assertEqual(len(items), 2)
+
+        with patch.object(self.store, "_connect", wraps=self.store._connect) as mock_conn:
+            items, total = self.store.page(limit=2, offset=10)
+            self.assertEqual(mock_conn.call_count, 1)
+            self.assertEqual(total, 3)
+            self.assertEqual(len(items), 0)
+
+    def test_page_orden_invalido_lanza_engine_error(self):
+        self.store.add("m", "p")
+        for order in ("sideways", "", None, 5):
+            with self.subTest(order=order):
+                with self.assertRaises(EngineError):
+                    self.store.page(order=order)
+
+
 if __name__ == "__main__":
     unittest.main()
 
