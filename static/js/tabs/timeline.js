@@ -13,7 +13,8 @@ const state = {
   playIndex: 0,
   aiGenerating: false,
 };
-let previewAudioEl = null;
+let previewAudioEls = [];
+let audioStartTimers = [];
 let imageSequenceTimer = null;
 
 function setTimelineStatus(msg, err = false) {
@@ -116,6 +117,63 @@ function selectClip(index) {
   updatePreviewMedia(clip);
 }
 
+function isLocalDiskPath(p) {
+  return /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith("\\\\") || (p.includes("\\") && !p.startsWith("/"));
+}
+
+export function getPlayableAudioUrl(track) {
+  if (!track || typeof track !== "object") return "";
+  const rawUrl = typeof track.url === "string" ? track.url.trim() : "";
+  if (rawUrl && !isLocalDiskPath(rawUrl)) {
+    return rawUrl;
+  }
+  const rawSource = typeof track.source_path === "string" ? track.source_path.trim() : "";
+  if (rawSource && !isLocalDiskPath(rawSource)) {
+    return rawSource;
+  }
+  return "";
+}
+
+export function audioSchedule(tracks) {
+  if (!Array.isArray(tracks)) return [];
+  const schedule = [];
+  for (const track of tracks) {
+    if (!track || typeof track !== "object") continue;
+    if (Boolean(track.mute || track.muted)) continue;
+    const url = getPlayableAudioUrl(track);
+    if (!url) continue;
+
+    let volume = (track.volume !== null && track.volume !== undefined && track.volume !== "") ? Number(track.volume) : 1.0;
+    if (!Number.isFinite(volume)) volume = 1.0;
+    volume = Math.max(0, Math.min(volume, 1.0));
+
+    const startTime = Math.max(0, Number(track.start_time) || 0);
+
+    schedule.push({
+      url,
+      volume,
+      startTime,
+      immediate: startTime === 0,
+      track,
+    });
+  }
+  return schedule;
+}
+
+export function stopAudioPlayback() {
+  for (const timer of audioStartTimers) {
+    clearTimeout(timer);
+  }
+  audioStartTimers = [];
+  for (const audio of previewAudioEls) {
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+    } catch (_) {}
+  }
+  previewAudioEls = [];
+}
+
 function stopSequencePlayback() {
   state.isPlayingAll = false;
   if (imageSequenceTimer) {
@@ -124,7 +182,7 @@ function stopSequencePlayback() {
   }
   const btn = $("btn-timeline-play-all");
   if (btn) btn.textContent = "▶ Reproducir Secuencia";
-  if (previewAudioEl) { previewAudioEl.pause(); previewAudioEl = null; }
+  stopAudioPlayback();
 }
 
 function playNextInSequence() {
@@ -165,12 +223,36 @@ function togglePlayAll() {
   state.playIndex = 0;
   const btn = $("btn-timeline-play-all");
   if (btn) btn.textContent = "⏸️ Pausar";
-  const audioTrack = (state.current.data.audio_tracks || [])[0];
-  if (audioTrack && audioTrack.url) {
-    previewAudioEl = new Audio(audioTrack.url);
-    previewAudioEl.volume = Number(audioTrack.volume) || 1.0;
-    previewAudioEl.play().catch(() => {});
+
+  stopAudioPlayback();
+  const scheduledTracks = audioSchedule(state.current.data.audio_tracks || []);
+  for (const item of scheduledTracks) {
+    try {
+      const audio = new Audio(item.url);
+      try {
+        audio.volume = item.volume;
+      } catch (_) {}
+      previewAudioEls.push(audio);
+      if (item.immediate) {
+        try {
+          const p = audio.play();
+          if (p && typeof p.catch === "function") p.catch(() => {});
+        } catch (_) {}
+      } else {
+        const timer = setTimeout(() => {
+          if (!state.isPlayingAll) return;
+          try {
+            const p = audio.play();
+            if (p && typeof p.catch === "function") p.catch(() => {});
+          } catch (_) {}
+        }, item.startTime * 1000);
+        audioStartTimers.push(timer);
+      }
+    } catch (_) {
+      // Ignorar fallo de audio individual sin romper los demas
+    }
   }
+
   playNextInSequence();
 }
 
