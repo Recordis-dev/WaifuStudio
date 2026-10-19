@@ -230,21 +230,28 @@ async def api_upscale(request: Request, payload: dict = Body(...)) -> Any:
         fps_out = None if fps_in is None else fps_in * multiplier
     else:
         entry = get_upscaler(payload.get("model"))
-        if source_kind == "image":
-            resolved_model = resolve_upscale_model_file(entry["file"], cfg)
-            passes = clamp_or_validate_upscale_dimensions(
-                source,
-                scale=entry["scale"],
-                passes=passes,
-                model_file=resolved_model,
-            )
-        elif source_kind == "video":
-            resolved_model = resolve_upscale_model_file(entry["file"], cfg)
-            validate_video_upscale_dimensions(
-                source,
-                scale=entry["scale"],
-                model_file=resolved_model,
-            )
+
+    if source_kind == "image":
+        resolved_model = resolve_upscale_model_file(entry["file"], cfg)
+        passes = clamp_or_validate_upscale_dimensions(
+            source,
+            scale=entry["scale"],
+            passes=passes,
+            model_file=resolved_model,
+        )
+    elif source_kind == "video":
+        resolved_model = resolve_upscale_model_file(entry["file"], cfg)
+        validate_video_upscale_dimensions(
+            source,
+            scale=entry["scale"],
+            model_file=resolved_model,
+        )
+    elif source_kind == "fps":
+        validate_video_upscale_dimensions(
+            source,
+            scale=2,
+            model_file=None,
+        )
     input_dir = cfg.comfy_input_dir
     input_dir.mkdir(parents=True, exist_ok=True)
     media_name = f"{uuid.uuid4().hex}{source.suffix.lower()}"

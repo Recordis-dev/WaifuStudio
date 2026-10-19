@@ -4566,6 +4566,25 @@ class DescribeRefUiStaticTests(ServerTestCase):
 class UpscaleRouteTests(ServerTestCase):
     MODEL = "real-esrgan-x2"
 
+    def setUp(self):
+        super().setUp()
+        # Los fixtures historicos usan bytes PNG falsos con extension .mp4.
+        # La guarda real (AUDIT-A-01) valida metadatos: mockea una sonda valida
+        # para estos tests de contrato HTTP; la guarda se prueba aparte con
+        # tests/test_video_upscale_guard.py.
+        self._probe_patch = mock.patch(
+            "app.upscale.probe_video_metadata",
+            return_value={
+                "width": 1280,
+                "height": 720,
+                "frames": 10,
+                "duration": 1.0,
+                "fps": 10.0,
+            },
+        )
+        self._probe_patch.start()
+        self.addCleanup(self._probe_patch.stop)
+
     def make_source(self, *, kind: str = "image", outputs=("ok.png",)) -> int:
         gen_id = self.store.add(MODEL_ID, "1girl", "", {}, kind=kind)
         self.store.update(gen_id, status="done", outputs=list(outputs), kind=kind)
