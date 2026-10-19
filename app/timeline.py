@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
@@ -70,9 +71,13 @@ def image_to_video_clip(
     height: int = 720,
     fps: int = 24,
     effect: str = "none",
+    transition_in: str = "none",
+    transition_out: str = "none",
+    fade_in: bool | None = None,
+    fade_out: bool | None = None,
     ffmpeg_bin: str | Path | None = None,
 ) -> Path:
-    """Convierte una imagen estática en un clip MP4 con audio silencioso compatible."""
+    """Convierte una imagen estática en un clip MP4 con audio silencioso compatible y soporte de fundidos."""
     image_path, output_mp4 = Path(image_path), Path(output_mp4)
     if not image_path.is_file():
         raise EngineError(f"timeline: imagen origen no encontrada: {image_path}")
@@ -82,12 +87,26 @@ def image_to_video_clip(
     frames = max(1, int(dur * fps))
     eff = str(effect).strip().lower()
 
+    filters: list[str] = []
     if eff == "zoom_in":
-        vf = f"zoompan=z='min(zoom+0.0015,1.2)':d={frames}:s={width}x{height}:fps={fps},setsar=1"
+        filters.append(f"zoompan=z='min(zoom+0.0015,1.2)':d={frames}:s={width}x{height}:fps={fps}")
+        filters.append("setsar=1")
     elif eff == "zoom_out":
-        vf = f"zoompan=z='max(1.2-0.0015*on,1.0)':d={frames}:s={width}x{height}:fps={fps},setsar=1"
+        filters.append(f"zoompan=z='max(1.2-0.0015*on,1.0)':d={frames}:s={width}x{height}:fps={fps}")
+        filters.append("setsar=1")
     else:
-        vf = f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1"
+        filters.append(f"scale={width}:{height}:force_original_aspect_ratio=decrease")
+        filters.append(f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black")
+        filters.append("setsar=1")
+
+    use_fade_in = fade_in is True or str(transition_in).strip().lower() == "fade"
+    use_fade_out = fade_out is True or str(transition_out).strip().lower() == "fade"
+    if use_fade_in:
+        filters.append("fade=t=in:st=0:d=0.5")
+    if use_fade_out:
+        filters.append(f"fade=t=out:st={max(0.0, dur - 0.5):.2f}:d=0.5")
+
+    vf = ",".join(filters)
 
     cmd = [
         exe, "-y", "-loop", "1", "-t", f"{dur:.3f}", "-i", str(image_path),
@@ -167,28 +186,76 @@ def normalize_video_clip(
     return output_mp4
 
 
+def resolve_gallery_path(source: str, gallery_dir: Path) -> Path | None:
+    """Resuelve y confina una URL /media/... o ruta a gallery_dir."""
+    if not source:
+        return None
+    raw = str(source).strip()
+    if "://" in raw:
+        path_str = urllib.parse.unquote(urllib.parse.urlsplit(raw).path)
+    else:
+        path_str = urllib.parse.unquote(raw)
+    clean = path_str.replace("\\", "/")
+    g_dir = gallery_dir.resolve()
+
+    if clean.startswith("/media/") or clean.startswith("media/"):
+        rel = clean.lstrip("/")[len("media/"):].lstrip("/")
+        cand = (g_dir / rel).resolve()
+    else:
+        p = Path(path_str)
+        if p.is_absolute():
+            cand = p.resolve()
+        else:
+            cand = (g_dir / p).resolve()
+
+    try:
+        if cand.is_relative_to(g_dir) and cand != g_dir:
+            return cand
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
 def _resolve_clip_source(clip: dict, gallery_dir: Path) -> tuple[Path, str]:
+    gallery_dir = gallery_dir.resolve()
     source_path = clip.get("source_path")
     if source_path:
-        p = Path(source_path)
-        if p.is_file():
-            kind = clip.get("kind") or ("image" if p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp") else "video")
-            return p, kind
-        rel = gallery_dir / source_path
-        if rel.is_file():
-            kind = clip.get("kind") or ("image" if rel.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp") else "video")
-            return rel, kind
+        cand = resolve_gallery_path(source_path, gallery_dir)
+        if cand is not None and cand.is_file():
+            kind = clip.get("kind") or ("image" if cand.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp") else "video")
+            return cand, kind
+        # Si es ruta absoluta dentro del sandbox (e.g. fixtures de tests)
+        raw = str(source_path).strip()
+        path_str = urllib.parse.unquote(urllib.parse.urlsplit(raw).path if "://" in raw else raw)
+        p = Path(path_str)
+        if p.is_absolute():
+            cand_abs = p.resolve()
+            try:
+                if (
+                    cand_abs.is_relative_to(gallery_dir)
+                    and cand_abs != gallery_dir
+                    and cand_abs.is_file()
+                ):
+                    kind = clip.get("kind") or ("image" if cand_abs.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp") else "video")
+                    return cand_abs, kind
+            except (ValueError, TypeError):
+                pass
+
     gen_id = clip.get("generation_id")
     if gen_id is not None:
-        gdir = gallery_dir / str(gen_id)
-        if gdir.is_dir():
-            for cand in sorted(gdir.iterdir()):
-                if cand.is_file():
-                    ext = cand.suffix.lower()
-                    if ext in (".mp4", ".webm"):
-                        return cand, "video"
-                    if ext in (".png", ".jpg", ".jpeg", ".webp"):
-                        return cand, "image"
+        try:
+            gdir = (gallery_dir / str(gen_id)).resolve()
+            if gdir.is_relative_to(gallery_dir) and gdir.is_dir():
+                for cand in sorted(gdir.iterdir()):
+                    if cand.is_file():
+                        ext = cand.suffix.lower()
+                        if ext in (".mp4", ".webm"):
+                            return cand, "video"
+                        if ext in (".png", ".jpg", ".jpeg", ".webp"):
+                            return cand, "image"
+        except (ValueError, TypeError):
+            pass
+
     raise EngineError(f"timeline: recurso de clip no encontrado: {clip}")
 
 
@@ -218,18 +285,35 @@ def export_timeline_project(
         source_file, kind = _resolve_clip_source(clip, gallery_dir)
         seg_out = work_dir / f"seg_{idx:03d}.mp4"
         duration = float(clip["duration"]) if clip.get("duration") is not None else None
+        t_in = clip.get("transition_in") or ("fade" if clip.get("fade_in") else "none")
+        t_out = clip.get("transition_out") or ("fade" if clip.get("fade_out") else "none")
         if kind == "image":
             dur = duration if (duration is not None and duration > 0) else 3.0
             image_to_video_clip(
-                source_file, seg_out, duration=dur, width=width, height=height,
-                fps=fps, effect=clip.get("effect") or "none", ffmpeg_bin=exe,
+                source_file,
+                seg_out,
+                duration=dur,
+                width=width,
+                height=height,
+                fps=fps,
+                effect=clip.get("effect") or "none",
+                transition_in=t_in,
+                transition_out=t_out,
+                ffmpeg_bin=exe,
             )
         else:
             normalize_video_clip(
-                source_file, seg_out, width=width, height=height, fps=fps,
-                mute=bool(clip.get("mute")), trim_in=float(clip.get("trim_in") or 0.0),
-                duration=duration, transition_in=clip.get("transition_in") or "none",
-                transition_out=clip.get("transition_out") or "none", ffmpeg_bin=exe,
+                source_file,
+                seg_out,
+                width=width,
+                height=height,
+                fps=fps,
+                mute=bool(clip.get("mute")),
+                trim_in=float(clip.get("trim_in") or 0.0),
+                duration=duration,
+                transition_in=t_in,
+                transition_out=t_out,
+                ffmpeg_bin=exe,
             )
         segment_paths.append(seg_out)
 
@@ -238,15 +322,55 @@ def export_timeline_project(
 
     audio_tracks = project_data.get("audio_tracks") or []
     valid_tracks = []
+    audio_dir = (gallery_dir.parent / "audio").resolve()
     for t in audio_tracks:
         if t.get("mute"):
             continue
-        p = Path(t.get("source_path") or "")
-        if not p.is_file():
-            rel = gallery_dir.parent / "audio" / p.name
-            if rel.is_file():
-                p = rel
-        if p.is_file():
+        raw_source = t.get("source_path")
+        if not raw_source:
+            continue
+        raw_str = str(raw_source).strip()
+        path_str = urllib.parse.unquote(urllib.parse.urlsplit(raw_str).path if "://" in raw_str else raw_str)
+        clean = path_str.replace("\\", "/")
+
+        p: Path | None = None
+        if clean.startswith("/media/audio/") or clean.startswith("media/audio/"):
+            rel_name = clean.lstrip("/")[len("media/audio/"):].lstrip("/")
+            cand = (audio_dir / rel_name).resolve()
+            try:
+                if cand.is_relative_to(audio_dir) and cand != audio_dir and cand.is_file():
+                    p = cand
+            except (ValueError, TypeError):
+                pass
+        else:
+            cand_p = Path(path_str)
+            if cand_p.is_absolute():
+                cand_res = cand_p.resolve()
+                try:
+                    if (
+                        cand_res.is_relative_to(audio_dir)
+                        and cand_res != audio_dir
+                        and cand_res.is_file()
+                    ):
+                        p = cand_res
+                except (ValueError, TypeError):
+                    pass
+            else:
+                cand_rel = (audio_dir / cand_p).resolve()
+                try:
+                    if cand_rel.is_relative_to(audio_dir) and cand_rel != audio_dir and cand_rel.is_file():
+                        p = cand_rel
+                except (ValueError, TypeError):
+                    pass
+                if p is None:
+                    cand_name = (audio_dir / cand_p.name).resolve()
+                    try:
+                        if cand_name.is_relative_to(audio_dir) and cand_name.is_file():
+                            p = cand_name
+                    except (ValueError, TypeError):
+                        pass
+
+        if p is not None and p.is_file():
             valid_tracks.append((p, float(t.get("start_time") or 0.0), float(t.get("volume") or 1.0)))
 
     if not valid_tracks:
@@ -285,4 +409,5 @@ __all__ = [
     "normalize_video_clip",
     "export_timeline_project",
     "has_audio_stream",
+    "resolve_gallery_path",
 ]

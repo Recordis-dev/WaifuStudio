@@ -19,7 +19,7 @@ from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
 from app.engine import EngineError
-from app.timeline import export_timeline_project, extract_clip_frame
+from app.timeline import export_timeline_project, extract_clip_frame, resolve_gallery_path
 
 AUDIO_EXTENSIONS = {
     ".mp3": "audio/mpeg",
@@ -91,30 +91,45 @@ async def api_timeline_extract_frame(request: Request) -> Any:
 
     video_path: Path | None = None
     base_id = ""
+    gallery_root = (cfg.data_dir / "gallery").resolve()
 
     if source_path:
-        cand = Path(source_path)
-        if not cand.is_file():
-            cand = cfg.data_dir / "gallery" / source_path
-        if cand.is_file():
+        cand = resolve_gallery_path(source_path, gallery_root)
+        if cand is not None and cand.is_file():
             video_path = cand
-            base_id = cand.stem
-    elif gen_id is not None:
-        row = st.get(int(gen_id))
-        if row is None:
-            return JSONResponse(status_code=404, content={"error": f"generacion {gen_id} no encontrada"})
-        gdir = cfg.data_dir / "gallery" / str(gen_id)
-        for out in (row.get("outputs") or []):
-            cand = gdir / (out.get("name") if isinstance(out, dict) else out)
-            if cand.is_file() and cand.suffix.lower() in (".mp4", ".webm"):
-                video_path = cand
-                break
-        if not video_path and gdir.is_dir():
-            for cand in sorted(gdir.glob("*")):
-                if cand.is_file() and cand.suffix.lower() in (".mp4", ".webm"):
-                    video_path = cand
-                    break
-        base_id = str(gen_id)
+            base_id = str(gen_id) if gen_id is not None else cand.stem
+
+    if video_path is None and gen_id is not None:
+        try:
+            gen_int = int(gen_id)
+        except (ValueError, TypeError):
+            gen_int = None
+        if gen_int is not None:
+            row = st.get(gen_int)
+            if row is not None:
+                gdir = (gallery_root / str(gen_id)).resolve()
+                for out in (row.get("outputs") or []):
+                    name = out.get("name") if isinstance(out, dict) else out
+                    if name:
+                        cand = (gdir / name).resolve()
+                        if (
+                            cand.is_relative_to(gallery_root)
+                            and cand.is_file()
+                            and cand.suffix.lower() in (".mp4", ".webm", ".png", ".jpg", ".jpeg", ".webp")
+                        ):
+                            video_path = cand
+                            break
+                if not video_path and gdir.is_dir():
+                    for cand in sorted(gdir.glob("*")):
+                        if (
+                            cand.is_file()
+                            and cand.suffix.lower() in (".mp4", ".webm", ".png", ".jpg", ".jpeg", ".webp")
+                        ):
+                            video_path = cand
+                            break
+                base_id = str(gen_id)
+            elif not source_path:
+                return JSONResponse(status_code=404, content={"error": f"generacion {gen_id} no encontrada"})
 
     if not video_path or not video_path.is_file():
         return JSONResponse(status_code=404, content={"error": "no se encontro video de origen"})
