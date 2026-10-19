@@ -3817,6 +3817,25 @@ class CharacterMediaTests(ServerTestCase):
         self.assertEqual(escape.status_code, 403)
         self.assertIn("error", escape.json())
 
+    def test_confinamiento_estricto_por_personaje(self):
+        client = self.make_client()
+        refs_root = self.config.data_dir / "characters"
+        char1_dir = refs_root / "1"
+        char2_dir = refs_root / "2"
+        char1_dir.mkdir(parents=True, exist_ok=True)
+        char2_dir.mkdir(parents=True, exist_ok=True)
+        (char2_dir / "abc.png").write_bytes(PNG_BYTES)
+
+        # Archivo valido del propio char 2 devuelve 200
+        valid = client.get("/media/characters/2/abc.png")
+        self.assertEqual(valid.status_code, 200)
+        self.assertEqual(valid.content, PNG_BYTES)
+
+        # Traversal hacia la carpeta de otro char devuelve 403
+        traversal = client.get("/media/characters/1/..%2F2%2Fabc.png")
+        self.assertEqual(traversal.status_code, 403)
+        self.assertIn("error", traversal.json())
+
 
 class IndexTests(ServerTestCase):
     def test_index_200_con_waifu(self):

@@ -7,6 +7,7 @@ import { UniversalViewer } from "../components/universal_viewer.js";
 import { ResolutionKit } from "../components/resolution_kit.js";
 import { initTooltipHelp } from "../components/tooltip_help.js";
 
+let testLabInitialized = false;
 let testViewerInstance = null;
 let testResolutionKit = null;
 
@@ -31,6 +32,9 @@ function makeSampleSvg(title, color1, color2, detail = "") {
 export function initTestLab() {
   const panel = $("panel-test");
   if (!panel) return;
+  if (testLabInitialized || panel.dataset.initialized === "true") return;
+  testLabInitialized = true;
+  panel.dataset.initialized = "true";
 
   // 1. Selector Dual (ResolutionKit)
   const orientSelect = $("test-res-orientation");
