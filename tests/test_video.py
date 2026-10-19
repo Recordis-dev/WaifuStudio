@@ -1150,6 +1150,50 @@ class BuildVideoGraphH3Tests(unittest.TestCase):
         self.assertEqual(graph["126"]["inputs"]["model"], ["134", 0])
         self.assertEqual(graph["124"]["inputs"]["model"], ["134", 0])
 
+    def test_v2v_fuerza_ref2va_y_vdn8_con_payload_rapido_turbo4(self):
+        graph = build_video_graph(
+            self.job(
+                mode="v2v",
+                profile="rapido",
+                variant="turbo4",
+                ref_video_name="dance.mp4",
+            )
+        )
+        self.assertIn("144", graph)
+        self.assertEqual(graph["144"]["class_type"], "LoadVideo")
+        self.assertEqual(graph["144"]["inputs"]["file"], "dance.mp4")
+
+    def test_v2v_con_vdn8_construye(self):
+        graph = build_video_graph(
+            self.job(
+                mode="v2v",
+                profile="ref2va",
+                variant="vdn8",
+                ref_video_name="dance.mp4",
+            )
+        )
+        self.assertIn("144", graph)
+        self.assertEqual(graph["144"]["class_type"], "LoadVideo")
+        self.assertEqual(graph["144"]["inputs"]["file"], "dance.mp4")
+
+    def test_i2v_con_perfil_rapido_sigue_validando_variante(self):
+        graph = build_video_graph(
+            self.job(
+                mode="i2v",
+                profile="rapido",
+                variant="turbo4",
+            )
+        )
+        self.assertIsNotNone(graph)
+        with self.assertRaises(EngineError):
+            build_video_graph(
+                self.job(
+                    mode="i2v",
+                    profile="rapido",
+                    variant="vdn8",
+                )
+            )
+
     def test_invalidos(self):
         cases = (
             {"profile": "nope"},

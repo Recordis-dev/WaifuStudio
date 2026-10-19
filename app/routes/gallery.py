@@ -125,11 +125,11 @@ async def api_character_media(char_id: int, name: str, request: Request) -> Any:
 
 @router.get("/api/refs/{name:path}")
 async def api_ref(name: str, request: Request) -> Any:
-    """Sirve una referencia guardada de `comfy_root/input` (solo imagenes).
+    """Sirve una referencia guardada de `comfy_root/input` (imagenes o video V2V).
 
     Confinamiento estricto al directorio input: 403 si la ruta escapa o la
-    extension no es png/jpg/jpeg/webp, 404 si el archivo no existe. La UI lo
-    usa para re-adjuntar la referencia guardada en `params.ref_image`.
+    extension no es png/jpg/jpeg/webp/mp4/webm, 404 si el archivo no existe.
+    La UI lo usa para re-adjuntar `params.ref_image` y `params.ref_video`.
     """
     cfg = request.app.state.config
     input_root = (cfg.comfy_root / "input").resolve()
@@ -138,7 +138,9 @@ async def api_ref(name: str, request: Request) -> Any:
         return JSONResponse(
             status_code=403, content={"error": "ruta fuera de comfy input"}
         )
-    media_type = CHARACTER_MEDIA_TYPES.get(candidate.suffix.lower())
+    media_type = CHARACTER_MEDIA_TYPES.get(candidate.suffix.lower()) or MEDIA_TYPES.get(
+        candidate.suffix.lower()
+    )
     if media_type is None:
         return JSONResponse(
             status_code=403, content={"error": "extension no permitida"}

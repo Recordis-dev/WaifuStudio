@@ -713,7 +713,9 @@ def prepare_h3_graph(
         for node in prepared.values()
     )
     detected_profile = "ref2va" if is_ref2va else "vdn" if is_vdn else None
-    if variant is None and detected_profile in {"ref2va", "vdn"}:
+    if is_ref2va:
+        variant = "vdn8"
+    elif variant is None and detected_profile in {"ref2va", "vdn"}:
         variant = "vdn8"
     if detected_profile and variant:
         validate_h3_profile_variant(detected_profile, variant)
@@ -929,7 +931,17 @@ def build_video_graph(job: dict) -> dict:
     engine_kind = job.get("engine")
     seed = _require_seed(job.get("seed", 42))
     if engine_kind == "h3":
-        profile = resolve_h3_profile(job.get("profile"))
+        mode = job.get("mode")
+        if mode in ("ref2va", "v2v"):
+            profile = resolve_h3_profile("ref2va")
+            variant = "vdn8"
+        else:
+            profile = resolve_h3_profile(job.get("profile"))
+            variant = job.get("variant")
+            if variant is None and profile.get("lora") is None:
+                variant = "vdn8"
+            if variant is not None:
+                validate_h3_profile_variant(profile["id"], variant)
         template = job.get("template")
         if not isinstance(template, str) or not template.strip():
             template = str(h3_template_path(profile))
@@ -950,9 +962,6 @@ def build_video_graph(job: dict) -> dict:
             frames = h3_frames_for_seconds(require_h3_seconds(seconds))
         else:
             frames = require_h3_frames(frames)
-        variant = job.get("variant")
-        if variant is None and profile.get("lora") is None:
-            variant = "vdn8"
         ref_video_name = job.get("ref_video_name") or job.get("video_name")
         return prepare_h3_graph(
             graph,
