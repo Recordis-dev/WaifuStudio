@@ -24,12 +24,14 @@ from app.editor import (
     EDITOR_DEFAULT_CFG,
     EDITOR_DEFAULT_SIZE,
     EDITOR_DEFAULT_STEPS,
+    EDITOR_PRESERVE_DENOISE,
     EDITOR_REF_LIMIT,
     EDITOR_SIZE_MAX,
     EDITOR_SIZE_MIN,
     EDITOR_STEPS_MAX,
     EDITOR_STEPS_MIN,
     EDITOR_TEMPLATE_PATH,
+    PRESERVE_ENCODE_ID,
     build_editor_graph,
     prepare_editor_graph,
     run_editor_generation,
@@ -42,6 +44,7 @@ from app.store import Store
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"waifu-editor-png"
 EDITOR_MODEL = "qwen-image-2.1"
+VAE_ID = "3"
 ENCODE_ID = "4"
 LATENT_ID = "5"
 SAMPLER_ID = "7"
@@ -739,7 +742,29 @@ class EditorGraphFeaturesTests(unittest.TestCase):
             preserve_structure=True,
         )
         sampler = graph[SAMPLER_ID]["inputs"]
-        self.assertEqual(sampler["latent_image"], [ENCODE_ID, 2])
+        self.assertIn(PRESERVE_ENCODE_ID, graph)
+        self.assertEqual(graph[PRESERVE_ENCODE_ID]["class_type"], "VAEEncode")
+        self.assertEqual(
+            graph[PRESERVE_ENCODE_ID]["inputs"],
+            {"pixels": ["ref_1", 0], "vae": [VAE_ID, 0]},
+        )
+        self.assertEqual(sampler["latent_image"], [PRESERVE_ENCODE_ID, 0])
+        self.assertNotEqual(sampler["latent_image"], [ENCODE_ID, 2])
+        self.assertNotEqual(sampler["latent_image"], [LATENT_ID, 0])
+        self.assertEqual(sampler["denoise"], EDITOR_PRESERVE_DENOISE)
+        self.assertLess(sampler["denoise"], 1.0)
+
+    def test_preserve_structure_false_conserva_empty_latent_y_denoise_1(self):
+        graph = prepare_editor_graph(
+            self.template,
+            prompt="test",
+            ref_images=["input.png"],
+            preserve_structure=False,
+        )
+        sampler = graph[SAMPLER_ID]["inputs"]
+        self.assertNotIn(PRESERVE_ENCODE_ID, graph)
+        self.assertEqual(sampler["latent_image"], [LATENT_ID, 0])
+        self.assertEqual(sampler["denoise"], 1.0)
 
     def test_preserve_structure_sin_refs_conserva_empty_latent(self):
         graph = prepare_editor_graph(
@@ -749,7 +774,53 @@ class EditorGraphFeaturesTests(unittest.TestCase):
             preserve_structure=True,
         )
         sampler = graph[SAMPLER_ID]["inputs"]
+        self.assertNotIn(PRESERVE_ENCODE_ID, graph)
         self.assertEqual(sampler["latent_image"], [LATENT_ID, 0])
+        self.assertEqual(sampler["denoise"], 1.0)
+
+    def test_preserve_structure_multiples_refs_usa_primera_ref(self):
+        graph = prepare_editor_graph(
+            self.template,
+            prompt="test",
+            ref_images=["char_a.png", "char_b.png", "char_c.png"],
+            preserve_structure=True,
+        )
+        encode_inputs = graph[ENCODE_ID]["inputs"]
+        self.assertEqual(encode_inputs["images.image_1"], ["ref_1", 0])
+        self.assertEqual(encode_inputs["images.image_2"], ["ref_2", 0])
+        self.assertEqual(encode_inputs["images.image_3"], ["ref_3", 0])
+        self.assertIn(PRESERVE_ENCODE_ID, graph)
+        self.assertEqual(
+            graph[PRESERVE_ENCODE_ID]["inputs"],
+            {"pixels": ["ref_1", 0], "vae": [VAE_ID, 0]},
+        )
+        sampler = graph[SAMPLER_ID]["inputs"]
+        self.assertEqual(sampler["latent_image"], [PRESERVE_ENCODE_ID, 0])
+        self.assertEqual(sampler["denoise"], 0.65)
+
+    def test_preserve_structure_sin_vaeloader_lanza_engine_error(self):
+        graph = load_graph(EDITOR_TEMPLATE_PATH)
+        del graph[VAE_ID]
+        with self.assertRaises(EngineError):
+            prepare_editor_graph(
+                graph,
+                prompt="test",
+                ref_images=["input.png"],
+                preserve_structure=True,
+            )
+
+    def test_build_editor_graph_preserve_structure(self):
+        result = build_editor_graph(
+            prompt="test",
+            ref_images=["input.png"],
+            preserve_structure=True,
+        )
+        self.assertIn(PRESERVE_ENCODE_ID, result)
+        self.assertEqual(
+            result[SAMPLER_ID]["inputs"]["latent_image"],
+            [PRESERVE_ENCODE_ID, 0],
+        )
+        self.assertEqual(result[SAMPLER_ID]["inputs"]["denoise"], 0.65)
 
     def test_loras_encadenados(self):
         loras = [
