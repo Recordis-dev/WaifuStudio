@@ -7,19 +7,56 @@ import { state } from "./state.js";
 import { $, setStatus, setVideoStatus, setEditorStatus, setUpscaleStatus, setProgress } from "./dom.js";
 
 async function api(path, options = {}) {
-  const response = await fetch(path, options);
-  let data = null;
+  const { timeoutMs, ...fetchOptions } = options;
+  let timer = null;
+  let controller = null;
+
+  if (typeof timeoutMs === "number" && timeoutMs > 0) {
+    controller = new AbortController();
+    if (fetchOptions.signal) {
+      if (fetchOptions.signal.aborted) {
+        controller.abort();
+      } else {
+        fetchOptions.signal.addEventListener("abort", () => controller.abort());
+      }
+    }
+    fetchOptions.signal = controller.signal;
+    timer = setTimeout(() => {
+      controller.abort();
+    }, timeoutMs);
+  }
+
   try {
-    data = await response.json();
-  } catch (_error) {
-    data = null;
+    const response = await fetch(path, fetchOptions);
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (_error) {
+      data = null;
+    }
+    if (!response.ok) {
+      const error = new Error(data && data.error ? data.error : `HTTP ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    return data;
+  } catch (err) {
+    if ((controller && controller.signal.aborted) || err.name === "AbortError") {
+      const isTimeout = controller && controller.signal.aborted;
+      const error = new Error(
+        isTimeout
+          ? `Tiempo de espera agotado (${timeoutMs} ms)`
+          : (err.message || "Petición abortada")
+      );
+      error.status = 0;
+      throw error;
+    }
+    throw err;
+  } finally {
+    if (timer !== null) {
+      clearTimeout(timer);
+    }
   }
-  if (!response.ok) {
-    const error = new Error(data && data.error ? data.error : `HTTP ${response.status}`);
-    error.status = response.status;
-    throw error;
-  }
-  return data;
 }
 
 function postJson(path, payload) {
@@ -82,7 +119,7 @@ async function pollJob(
   try {
     for (;;) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      const job = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
+      const job = await api(`/api/jobs/${encodeURIComponent(jobId)}`, { timeoutMs: 15000 });
       if (job.status !== lastStatus) {
         lastStatus = job.status;
         window.dispatchEvent(
@@ -178,6 +215,10 @@ async function enqueueJobs(jobIds, options = {}) {
                 await item.onDone({
                   status: "error",
                   error: jobError && jobError.message ? jobError.message : "Fallo de conexión",
+                  jobId: item.jobId,
+                  gen_id: item.jobId,
+                  outputs: [],
+                  params: {},
                 });
               } catch (onDoneErr) {
                 console.error("[enqueueJobs] Error en callback onDone:", onDoneErr);

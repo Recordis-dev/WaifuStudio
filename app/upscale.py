@@ -30,6 +30,7 @@ from __future__ import annotations
 import copy
 import io
 import json
+import logging
 import math
 import os
 import shutil
@@ -43,6 +44,8 @@ from app.config import APP_ROOT
 from app.engine import ComfyEngine, EngineError
 from app.progress import ProgressTracker
 
+logger = logging.getLogger(__name__)
+
 UPSCALERS_PATH = APP_ROOT / "registry" / "upscalers-v1.json"
 CATALOG_VERSION = 1
 MIN_UPSCALE_SCALE = 1
@@ -50,7 +53,9 @@ MAX_UPSCALE_INPUT_SIDE = 2560
 MAX_UPSCALE_OUTPUT_SIDE = 4096
 MAX_VIDEO_UPSCALE_INPUT_SIDE = 1920
 MAX_VIDEO_UPSCALE_OUTPUT_SIDE = 3840  # 2160p (4K UHD)
-MAX_VIDEO_UPSCALE_FRAMES = 500  # Presupuesto maximo de fotogramas batch (12 GB VRAM)
+MAX_VIDEO_UPSCALE_FRAMES = 300  # Presupuesto maximo de fotogramas batch (12 GB VRAM)
+MAX_VIDEO_UPSCALE_INPUT_BYTES = 4 * 1024**3
+MAX_VIDEO_UPSCALE_OUTPUT_BYTES = 16 * 1024**3
 IMAGE_EXT = ("png",)
 VIDEO_EXT = ("mp4", "webm")
 DEFAULT_PREFIX = "waifu/upscale"
@@ -468,7 +473,10 @@ def probe_video_metadata(
     """
     path = Path(video_path)
     if not path.is_file():
+        logger.warning("No se pudo sondear metadatos de video: archivo no encontrado (%s)", path)
         return {"width": 0, "height": 0, "frames": 0, "duration": 0.0, "fps": 0.0}
+
+    failures: list[str] = []
 
     # 1. ffprobe CLI
     exe = str(ffprobe_bin) if ffprobe_bin else (
@@ -513,8 +521,16 @@ def probe_video_metadata(
                             "duration": dur,
                             "fps": fps_val,
                         }
-        except Exception:
-            pass
+                    failures.append(f"ffprobe retorno dimensiones no validas ({w}x{h})")
+                else:
+                    failures.append("ffprobe no encontro streams de video")
+            else:
+                err_detail = proc.stderr.strip() if proc.stderr else f"codigo {proc.returncode}"
+                failures.append(f"ffprobe fallo: {err_detail}")
+        except Exception as exc:
+            failures.append(f"ffprobe fallo: {exc}")
+    else:
+        failures.append("ffprobe no esta instalado o especificado")
 
     # 2. cv2 fallback
     try:
@@ -535,8 +551,11 @@ def probe_video_metadata(
                     "duration": dur,
                     "fps": fps_val,
                 }
-    except Exception:
-        pass
+            failures.append(f"cv2 retorno dimensiones no validas ({w}x{h})")
+        else:
+            failures.append("cv2 no pudo abrir el archivo")
+    except Exception as exc:
+        failures.append(f"cv2 fallo o no disponible: {exc}")
 
     # 3. av fallback
     try:
@@ -556,9 +575,11 @@ def probe_video_metadata(
                         "duration": dur,
                         "fps": fps_val,
                     }
-    except Exception:
-        pass
+            failures.append("av no encontro streams de video validos")
+    except Exception as exc:
+        failures.append(f"av fallo o no disponible: {exc}")
 
+    logger.warning("No se pudieron sondear metadatos de video para %s: %s", path, "; ".join(failures))
     return {"width": 0, "height": 0, "frames": 0, "duration": 0.0, "fps": 0.0}
 
 
@@ -569,25 +590,40 @@ def validate_video_upscale_dimensions(
     model_file: str | None = None,
     ffprobe_bin: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Valida que la resolucion y cantidad de fotogramas del video no excedan la VRAM (12 GB).
+    """Valida que la resolucion, fotogramas y memoria del video no excedan la VRAM (12 GB).
 
     Lanza EngineError (HTTP 400) si:
+    - No se pueden leer las dimensiones o los fotogramas del video
     - El lado mayor supera MAX_VIDEO_UPSCALE_INPUT_SIDE (1920 px)
     - La resolucion esperada de salida supera MAX_VIDEO_UPSCALE_OUTPUT_SIDE (3840 px / 2160p)
-    - El numero de fotogramas supera MAX_VIDEO_UPSCALE_FRAMES (500 fotogramas)
+    - El numero de fotogramas supera MAX_VIDEO_UPSCALE_FRAMES (300 fotogramas)
+    - El presupuesto de memoria de entrada supera MAX_VIDEO_UPSCALE_INPUT_BYTES (4 GiB)
+    - El presupuesto de memoria de salida supera MAX_VIDEO_UPSCALE_OUTPUT_BYTES (16 GiB)
     """
     path = Path(video_path)
     if not path.is_file():
         raise EngineError(f"Archivo de video no encontrado: {path}")
 
     meta = probe_video_metadata(path, ffprobe_bin=ffprobe_bin)
-    width = meta.get("width", 0)
-    height = meta.get("height", 0)
-    frames = meta.get("frames", 0)
+    width = int(meta.get("width") or 0)
+    height = int(meta.get("height") or 0)
 
+    # 1. meta = probe; si width<=0 o height<=0 => EngineError claro
     if width <= 0 or height <= 0:
-        return meta
+        raise EngineError(f"No se pudieron leer las dimensiones del video: {path.name}")
 
+    # 2. frames: si meta["frames"]<=0, calcular round(duration*fps); si sigue <=0 => EngineError
+    frames = int(meta.get("frames") or 0)
+    if frames <= 0:
+        duration = float(meta.get("duration") or 0.0)
+        fps = float(meta.get("fps") or 0.0)
+        if duration > 0 and fps > 0:
+            frames = round(duration * fps)
+        if frames <= 0:
+            raise EngineError(f"No se pudo determinar el numero de fotogramas del video: {path.name}")
+        meta["frames"] = frames
+
+    # 3. comprobar max side input/output (como ahora)
     if max(width, height) > MAX_VIDEO_UPSCALE_INPUT_SIDE:
         raise EngineError(
             f"El video de entrada es demasiado grande para escalar ({width}x{height} px; "
@@ -608,11 +644,34 @@ def validate_video_upscale_dimensions(
             f"supera el limite de salida permitido para 12 GB VRAM ({MAX_VIDEO_UPSCALE_OUTPUT_SIDE} px / 2160p)."
         )
 
+    # 4. comprobar frames > MAX_VIDEO_UPSCALE_FRAMES => EngineError
     if frames > MAX_VIDEO_UPSCALE_FRAMES:
         raise EngineError(
             f"El video tiene demasiados fotogramas ({frames} frames; "
             f"maximo permitido para escalado en batch: {MAX_VIDEO_UPSCALE_FRAMES} frames). "
             f"Reduzca la duracion del clip antes de escalar."
+        )
+
+    # 5. input_bytes y output_bytes
+    input_bytes = frames * width * height * 3 * 4
+    output_w = round(width * effective_scale)
+    output_h = round(height * effective_scale)
+    output_bytes = frames * output_w * output_h * 3 * 4
+
+    # 6. si input_bytes > MAX_VIDEO_UPSCALE_INPUT_BYTES => EngineError con GB y límite
+    if input_bytes > MAX_VIDEO_UPSCALE_INPUT_BYTES:
+        raise EngineError(
+            f"El presupuesto de memoria de entrada ({input_bytes / (1024**3):.2f} GB) supera "
+            f"el maximo permitido ({MAX_VIDEO_UPSCALE_INPUT_BYTES / (1024**3):.1f} GB). "
+            f"Reduzca la resolucion o los fotogramas."
+        )
+
+    # 7. si output_bytes > MAX_VIDEO_UPSCALE_OUTPUT_BYTES => EngineError con GB y límite
+    if output_bytes > MAX_VIDEO_UPSCALE_OUTPUT_BYTES:
+        raise EngineError(
+            f"El presupuesto de memoria de salida ({output_bytes / (1024**3):.2f} GB) supera "
+            f"el maximo permitido ({MAX_VIDEO_UPSCALE_OUTPUT_BYTES / (1024**3):.1f} GB). "
+            f"Reduzca la escala, resolucion o fotogramas."
         )
 
     return meta
@@ -1401,6 +1460,14 @@ def run_fps(
         job["fps_in"] = fps_in
         job["fps_out"] = None if fps_in is None else fps_in * multiplier
         job["params"] = _fps_params(job)
+        if config and hasattr(config, "comfy_input_dir") and job.get("video_name"):
+            input_video_path = Path(config.comfy_input_dir) / job.get("video_name")
+            if input_video_path.is_file():
+                validate_video_upscale_dimensions(
+                    input_video_path,
+                    scale=2,
+                    model_file=None,
+                )
         graph = build_fps_graph(
             job.get("video_name"),
             job.get("ckpt_name"),
@@ -1495,7 +1562,9 @@ __all__ = [
     "MAX_UPSCALE_INPUT_SIDE",
     "MAX_UPSCALE_OUTPUT_SIDE",
     "MAX_VIDEO_UPSCALE_FRAMES",
+    "MAX_VIDEO_UPSCALE_INPUT_BYTES",
     "MAX_VIDEO_UPSCALE_INPUT_SIDE",
+    "MAX_VIDEO_UPSCALE_OUTPUT_BYTES",
     "MAX_VIDEO_UPSCALE_OUTPUT_SIDE",
     "MIN_UPSCALE_SCALE",
     "MODEL_LOADER_ID",
