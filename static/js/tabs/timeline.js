@@ -2,7 +2,7 @@
 // Qué hace: NLE secuencial, preview continua, audio multi-pista y generación IA integrada.
 // Dependencias: static/js/api.js y static/js/dom.js.
 
-import { api, postJson, enqueueJobs } from "../api.js";
+import { api, postJson, enqueueJobs, cancelJob } from "../api.js";
 import { $, on } from "../dom.js";
 
 const state = {
@@ -477,12 +477,28 @@ async function exportTimeline() {
   finally { if (btn) btn.disabled = false; }
 }
 
+function setTimelineAiBusy(busy) {
+  const btn = $("btn-timeline-ai-generate");
+  if (btn) btn.disabled = Boolean(busy);
+}
+
 async function enqueueClipJob(jobId, kind, dur, insertIdx, msg) {
   await enqueueJobs(jobId, {
     statusFn: setAiStatus,
+    cancelButtonId: "btn-timeline-ai-cancel",
     onDone: (job) => {
       state.aiGenerating = false;
+      setTimelineAiBusy(false);
       const outName = (job.outputs && job.outputs[0]) || "";
+      if (job.status !== "done" || !outName) {
+        renderTracks();
+        if (job.status === "cancelled") {
+          setAiStatus("Generación cancelada");
+        } else {
+          setAiStatus(job.error || "La generación no devolvió un clip", true);
+        }
+        return;
+      }
       const newUrl = `/media/${job.gen_id}/${outName}`;
       state.current.data.clips.splice(insertIdx, 0, {
         generation_id: job.gen_id, kind, url: newUrl, source_path: newUrl, duration: dur, mute: false, effect: "none",
@@ -497,8 +513,14 @@ async function enqueueClipJob(jobId, kind, dur, insertIdx, msg) {
 
 async function triggerAiAction(actionType, targetClipIndex = null) {
   const clips = state.current.data.clips;
-  const prompt = ($("timeline-ai-prompt") && $("timeline-ai-prompt").value.trim()) || "cinematic high quality";
+  const promptInput = $("timeline-ai-prompt");
+  const prompt = promptInput ? promptInput.value.trim() : "";
+  if (!prompt) {
+    setAiStatus("Escribe un prompt antes de generar", true);
+    return;
+  }
   const seconds = Number(($("timeline-ai-seconds") && $("timeline-ai-seconds").value) || 5);
+  setTimelineAiBusy(true);
   setAiStatus("Preparando generación IA...");
   try {
     if (actionType === "continue_i2v") {
@@ -555,11 +577,12 @@ async function triggerAiAction(actionType, targetClipIndex = null) {
       renderTracks();
       setAiStatus("Generando imagen Anima...");
       const modelId = document.getElementById("model")?.value || "anima-official-aesthetic-v11";
-      const res = await postJson("/api/generate", { model_id: modelId, prompt, negative: "", size: "1024x1024" });
+      const res = await postJson("/api/generate", { model_id: modelId, prompt, negative: "", size: "paisaje_plan" });
       await enqueueClipJob(res.job_id, "image", 3.0, clips.length, "¡Imagen insertada!");
     }
   } catch (err) {
     state.aiGenerating = false;
+    setTimelineAiBusy(false);
     renderTracks();
     setAiStatus(err.message, true);
   }
@@ -616,6 +639,7 @@ export function initTimelineTab() {
   on("btn-timeline-ai-generate", "click", () => {
     triggerAiAction(($("timeline-ai-action") && $("timeline-ai-action").value) || "continue_i2v");
   });
+  on("btn-timeline-ai-cancel", "click", (event) => cancelJob(event, setAiStatus));
 
   on("btn-timeline-add-audio", "click", () => {
     const input = $("timeline-audio-input");

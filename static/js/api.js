@@ -82,18 +82,19 @@ function setCancelVisible(visible, buttonId = "btn-cancel") {
   $(buttonId).classList.toggle("hidden", !visible);
 }
 
-async function cancelJob(event) {
+async function cancelJob(event, statusFnOverride = null) {
   const jobId = state.activeJobId;
   if (!jobId) {
     return;
   }
   const button = event && event.currentTarget ? event.currentTarget : $("btn-cancel");
   const statusFn =
-    button.id === "btn-video-cancel"
+    statusFnOverride ||
+    (button.id === "btn-video-cancel"
       ? setVideoStatus
       : button.id === "btn-upscale-cancel"
       ? setUpscaleStatus
-      : setStatus;
+      : setStatus);
   button.disabled = true;
   try {
     await api(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" });
