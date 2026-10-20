@@ -397,6 +397,7 @@ export async function refreshTimelineMedia() {
           url,
           source_path: url,
           duration: dur,
+          params: item.params || {},
           mute: false,
           effect: "none",
           transition_in: "none",
@@ -477,6 +478,41 @@ async function exportTimeline() {
   finally { if (btn) btn.disabled = false; }
 }
 
+function inheritedVideoConfig(clip) {
+  const p = (clip && clip.params) || {};
+  const width = Number(p.width);
+  const height = Number(p.height);
+  const hasSize = Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0;
+  const profileOk = typeof p.profile === "string" && !["ref2va", "v2v"].includes(p.profile);
+  const aspect = p.aspect === "vertical" || p.aspect === "horizontal"
+    ? p.aspect
+    : hasSize
+    ? (height > width ? "vertical" : "horizontal")
+    : "";
+  return {
+    profile: profileOk ? p.profile : "",
+    variant: profileOk && typeof p.variant === "string" ? p.variant : "",
+    width: hasSize ? Math.round(width) : null,
+    height: hasSize ? Math.round(height) : null,
+    aspect,
+    sage: typeof p.sage === "boolean" ? p.sage : null,
+    include_audio: typeof p.include_audio === "boolean" ? p.include_audio : null,
+  };
+}
+
+function applyInheritedVideoConfig(payload, inherited) {
+  if (inherited.profile) payload.profile = inherited.profile;
+  if (inherited.variant) payload.variant = inherited.variant;
+  if (inherited.width && inherited.height) {
+    payload.width = inherited.width;
+    payload.height = inherited.height;
+  } else if (inherited.aspect) {
+    payload.aspect = inherited.aspect;
+  }
+  if (inherited.sage !== null) payload.sage = inherited.sage;
+  if (inherited.include_audio !== null) payload.include_audio = inherited.include_audio;
+}
+
 function setTimelineAiBusy(busy) {
   const btn = $("btn-timeline-ai-generate");
   if (btn) btn.disabled = Boolean(busy);
@@ -501,7 +537,9 @@ async function enqueueClipJob(jobId, kind, dur, insertIdx, msg) {
       }
       const newUrl = `/media/${job.gen_id}/${outName}`;
       state.current.data.clips.splice(insertIdx, 0, {
-        generation_id: job.gen_id, kind, url: newUrl, source_path: newUrl, duration: dur, mute: false, effect: "none",
+        generation_id: job.gen_id, kind, url: newUrl, source_path: newUrl, duration: dur,
+        params: job.params || {},
+        mute: false, effect: "none",
         transition_in: "none", transition_out: "none", _hasExplicitDuration: true,
       });
       selectClip(insertIdx);
@@ -527,6 +565,7 @@ async function triggerAiAction(actionType, targetClipIndex = null) {
       const refIdx = targetClipIndex !== null ? targetClipIndex : (state.selectedIndex ?? (clips.length - 1));
       const refClip = clips[refIdx];
       if (!refClip) throw new Error("No hay clip de referencia para continuar");
+      const inherited = inheritedVideoConfig(refClip);
       state.aiGenerating = true;
       renderTracks();
       const frameRes = await postJson("/api/timeline/extract_frame", {
@@ -542,8 +581,9 @@ async function triggerAiAction(actionType, targetClipIndex = null) {
         prompt,
         motion_positive: prompt,
         seconds,
-        aspect: "horizontal",
+        aspect: inherited.aspect || "horizontal",
       };
+      applyInheritedVideoConfig(payload, inherited);
       if (!payload.image_b64 && frameRes.image_name) {
         payload.image_name = frameRes.image_name;
       }
@@ -553,6 +593,7 @@ async function triggerAiAction(actionType, targetClipIndex = null) {
       if (clips.length < 2) throw new Error("Se requieren al menos 2 clips para puente FLF2V");
       const idxA = targetClipIndex !== null ? targetClipIndex : Math.max(0, clips.length - 2);
       const idxB = idxA + 1;
+      const inherited = inheritedVideoConfig(clips[idxA]);
       state.aiGenerating = true;
       renderTracks();
       setAiStatus("Extrayendo extremos para puente FLF2V...");
@@ -566,8 +607,9 @@ async function triggerAiAction(actionType, targetClipIndex = null) {
         prompt,
         motion_positive: prompt,
         seconds,
-        aspect: "horizontal",
+        aspect: inherited.aspect || "horizontal",
       };
+      applyInheritedVideoConfig(payload, inherited);
       if (!payload.image_b64 && fA.image_name) payload.image_name = fA.image_name;
       if (!payload.last_image_b64 && fB.image_name) payload.last_image_name = fB.image_name;
       const res = await postJson("/api/video/generate", payload);
