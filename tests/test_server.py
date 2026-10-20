@@ -4307,6 +4307,7 @@ class EditorGenerateValidationTests(ServerTestCase):
         job_id = response.json()["job_id"]
         status = client.get(f"/api/jobs/{job_id}").json()
         self.assertEqual(status["status"], "queued")
+        self.assertIn("gen_id", status)
         self.assertEqual(status["prompt"], "1girl")
         self.assertEqual(status["negative"], "lowres")
         self.assertEqual(status["params"]["steps"], 30)

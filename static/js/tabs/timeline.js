@@ -525,8 +525,12 @@ async function enqueueClipJob(jobId, kind, dur, insertIdx, msg) {
     onDone: (job) => {
       state.aiGenerating = false;
       setTimelineAiBusy(false);
-      const outName = (job.outputs && job.outputs[0]) || "";
-      if (job.status !== "done" || !outName) {
+      const output = ((job && job.outputs) || [])[0];
+      const outName = typeof output === "string" ? output : (output && output.name) || "";
+      const outUrl = output && typeof output === "object" && output.url ? output.url : "";
+      const derivedGenId = outUrl.match(/\/media\/(\d+)\//);
+      const genId = job.gen_id != null ? job.gen_id : (derivedGenId ? Number(derivedGenId[1]) : null);
+      if (job.status !== "done" || !outName || !outUrl || genId == null) {
         renderTracks();
         if (job.status === "cancelled") {
           setAiStatus("Generación cancelada");
@@ -535,9 +539,9 @@ async function enqueueClipJob(jobId, kind, dur, insertIdx, msg) {
         }
         return;
       }
-      const newUrl = `/media/${job.gen_id}/${outName}`;
+      const newUrl = outUrl;
       state.current.data.clips.splice(insertIdx, 0, {
-        generation_id: job.gen_id, kind, url: newUrl, source_path: newUrl, duration: dur,
+        generation_id: genId, kind, url: newUrl, source_path: newUrl, duration: dur,
         params: job.params || {},
         mute: false, effect: "none",
         transition_in: "none", transition_out: "none", _hasExplicitDuration: true,

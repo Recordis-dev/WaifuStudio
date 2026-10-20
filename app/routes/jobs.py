@@ -99,6 +99,7 @@ async def api_job(job_id: str, request: Request) -> Any:
     ]
     return {
         "status": status,
+        "gen_id": gen_id,
         "outputs": outputs,
         "error": job.get("error"),
         "progress": progress,
