@@ -22,11 +22,11 @@
 
 | Módulo | Qué hace realmente |
 |---|---|
-| ⚡ **Instalador Portátil (Windows)** | `INSTALAR.bat` y `ABRIR_APP.bat` configuran un entorno portátil aislado de Python + ComfyUI en Windows y descargan los modelos configurados. |
+| ⚡ **Instalador Portátil (Windows)** | `install.bat` configura un entorno portátil aislado de Python + ComfyUI en Windows, descarga los modelos configurados e instala **FFmpeg/FFprobe** portables en `tools\ffmpeg`. Usa `start.bat` para arrancar, `stop.bat` para detener y `healthcheck.bat` para diagnosticar. |
 | 🎭 **Gestor de Personajes (OC Maker)** | Guarda rasgos de personajes, genera hojas de referencia (Frente / Perfil / Espalda) y permite lanzar entrenamientos de LoRA en local. |
 | 🧠 **Asistente de Prompts** | 91.357 tags de Danbooru indexados en SQLite FTS5 + asistente LLM local opcional en CPU (`Qwen3.5-9B` GGUF) para expandir tags o describir imágenes. |
 | 🎞️ **Vídeo H3 (`MinimaxH3 VDN`)** | Generación de vídeo en 8 pasos mediante **MinimaxH3 VideoDeltaNet (VDN)** con audio nativo y presets de cámara (`I2V`, `FLF2V`, `Ref2VA`, `V2V`). |
-| 🎬 **Estudio Timeline Básico** | Secuenciador web sencillo para unir clips de vídeo e imágenes estáticas con una pista de audio externa usando FFmpeg, además de atajos para continuar clips con `I2V` / `FLF2V`. |
+| 🎬 **Estudio Timeline Básico** | Secuenciador web sencillo para unir clips de vídeo e imágenes estáticas con una pista de audio externa usando FFmpeg incluido, además de atajos para continuar clips con `I2V` / `FLF2V`. |
 | 🔍 **Upscaler y RIFE FPS** | Escalado de imagen y vídeo (`RealESRGAN`, `AnimeSharp`, `UltraSharp`), pase opcional de difusión (`Anima` / `Qwen 2.1`), nitidez `RCAS` e interpolación RIFE. |
 
 ---
@@ -34,8 +34,10 @@
 ## 🚀 Inicio Rápido (Windows)
 
 1. **Clona o Descarga** este repositorio en tu disco (ej. `E:\IA\WAIFU`).
-2. **Ejecuta `INSTALAR.bat`**: Configura el entorno portátil de Python, ComfyUI, nodos personalizados y descarga los pesos necesarios.
-3. **Ejecuta `ABRIR_APP.bat`**: Levanta el servidor local y abre `http://127.0.0.1:8765` en tu navegador.
+2. **Ejecuta `install.bat`**: Configura el entorno portátil de Python, ComfyUI, nodos personalizados, FFmpeg/FFprobe portables y los pesos necesarios.
+3. **Ejecuta `start.bat`**: Levanta el servidor local y abre `http://127.0.0.1:8765` en tu navegador.
+
+Usa `stop.bat` para detener app y engine, y `healthcheck.bat` para verificar rutas/servicios. FFmpeg se instala con el instalador; usa `-SkipFfmpeg` solo para instalaciones mínimas (Timeline/export/fade no estarán disponibles).
 
 > 💡 **Guía Integrada**: Dentro de la app tienes la pestaña **📖 Guía** con explicaciones de uso de cada pestaña y sus controles.
 

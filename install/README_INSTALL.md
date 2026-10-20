@@ -9,11 +9,11 @@ Instalador por consola, 100% automatizado y aislado. Descarga todo lo pesado (en
 | Sistema | **Windows 10/11 x64** |
 | GPU | **NVIDIA RTX 3000 / 4000 / 5000** (8 GB+ VRAM para imagen, Editor y Upscaler; 12 GB+ para vídeo H3). Probado en RTX 3060 12 GB. **Driver NVIDIA >= 570.xx recomendado** para soporte nativo CUDA 13.0 (`cu130`). |
 | Disco | **SSD SATA o NVMe** (no HDD: los modelos se leen y transfieren a GPU mucho más rápido). **25 GB libres** para instalación base (`-SkipModels` o `-SkipLlm`) / **~120-150 GB libres** para paquete completo (~106 GB modelos recomendados + engine/.venv + ~6,5 GB LLM). |
-| Programas | Git for Windows (`git` para clonar); `curl.exe` ya viene con Windows. **No necesitas instalar Python ni Conda previamente**. |
+| Programas | Git for Windows (`git` para clonar); `curl.exe` ya viene con Windows. **No necesitas instalar Python, Conda ni FFmpeg**: el instalador añade FFmpeg/FFprobe portables en `tools\ffmpeg` (omite con `-SkipFfmpeg`). |
 
 ## 2) Aislamiento Hermético del Entorno
 
-El instalador (`INSTALAR.bat` / `install/install.ps1` / `scripts/environment.ps1`) está diseñado para ser completamente hermético y evitar conflictos con software preexistente:
+El instalador (`install.bat` / `install/install.ps1` / `scripts/environment.ps1`) está diseñado para ser completamente hermético y evitar conflictos con software preexistente:
 - **Python y uv locales y portables**: descarga e instala CPython 3.12.12 en `python\` y `uv` en `tools\uv\`, sin tocar variables de entorno globales ni requerir permisos de administrador.
 - **Inmunidad ante Python/Conda del sistema**: limpia activamente en memoria variables contaminantes (`PYTHONPATH`, `PYTHONHOME`, `CONDA_PREFIX`, etc.).
 - **Sanitización de `.venv`**: detecta si un entorno virtual previo apunta a un Python global o huérfano y lo recrea automáticamente vinculado al Python aislado local.
@@ -24,25 +24,28 @@ El instalador (`INSTALAR.bat` / `install/install.ps1` / `scripts/environment.ps1
 ```powershell
 git clone https://github.com/gusnion/WaifuStudio.git
 cd WaifuStudio
-INSTALAR.bat
+install.bat
 ```
 
-- Descarga los componentes del engine, nodos de ComfyUI y pregunta interactivamente si deseas descargar los modelos recomendados.
-- Es **repetible e idempotente**: si se interrumpe la conexión, vuelve a ejecutar `INSTALAR.bat` y continuará exactamente donde quedó.
+- Descarga los componentes del engine, nodos de ComfyUI, **FFmpeg/FFprobe portables** (`tools\ffmpeg`) y pregunta interactivamente si deseas descargar los modelos recomendados.
+- Es **repetible e idempotente**: si se interrumpe la conexión, vuelve a ejecutar `install.bat` y continuará exactamente donde quedó.
 - Verifica cada archivo con SHA256; los archivos ya íntegros no se vuelven a descargar.
+- Si no quieres FFmpeg (Timeline/export/fade no funcionarán), usa `install.bat -SkipFfmpeg`.
 
 ## 4) Usar
 
 ```
-1) INICIAR_ENGINE.bat      (déjalo abierto; escucha en 127.0.0.1:8288)
-2) INICIAR_WAIFU.bat       (abre http://127.0.0.1:8765)
-3) ABRIR_APP.bat           (opcional: modo ventana ultraligera dedicada, ~100 MB RAM)
+1) start.bat        (arranca engine + app y abre la ventana)
+2) healthcheck.bat  (opcional: diagnostico de rutas/servicios)
+3) stop.bat         (detiene app + engine)
 ```
 
 El LLM es automático: la app arranca y para sola su servidor de texto/visión (~5 s la primera
-carga; CPU, 0 VRAM). No hay que lanzar nada más. Para cerrar: `DETENER_WAIFU.bat` y
-`DETENER_ENGINE.bat`. Comprobación rápida: `VERIFICAR_WAIFU.bat` (con `--require-llm` exige el
-LLM listo).
+carga; CPU, 0 VRAM). No hay que lanzar nada más.
+
+**FFmpeg/FFprobe**: el instalador los deja en `tools\ffmpeg\ffmpeg.exe` y
+`tools\ffmpeg\ffprobe.exe`. La app los detecta sin tocar el PATH. Si faltan, `healthcheck.bat`
+mostrará `ffmpeg: NO ENCONTRADO` y Timeline/export/fade fallarán.
 
 ## 4b) LLM único (incluido, ~6,5 GB)
 

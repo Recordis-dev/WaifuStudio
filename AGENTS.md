@@ -11,7 +11,7 @@ Trabaja siempre en español, de forma concisa y directa, sin emojis, verificando
 ## 1. Qué es WaifuStudio y Arquitectura de Ejecución
 
 Webapp local autónoma (**FastAPI + Jinja2 + Vanilla ES Modules / CSS modular**, cero bundlers ni telemetría) que utiliza **ComfyUI v0.37.4** como engine desacoplado:
-- **App Web**: `http://127.0.0.1:8765` (`WAIFU_APP_PORT`). Lanzador ligero en ventana dedicada (~100 MB RAM): `ABRIR_APP.bat` (`scripts/open_window.ps1`).
+- **App Web**: `http://127.0.0.1:8765` (`WAIFU_APP_PORT`). Lanzador ligero en ventana dedicada (~100 MB RAM): `start.bat` (`scripts/open_window.ps1`).
 - **Engine ComfyUI**: `http://127.0.0.1:8288` (`WAIFU_COMFY_URL`), cola estrictamente monohilo FIFO (`app/jobs.py`) dimensionada para **1 GPU desde 8–12 GB VRAM (RTX 3060+)**.
 - **LLM / Visión en CPU (`:8290`)**: `Qwen3.5-9B NSFW Captioning v5` (`Q4_K_M` + `mmproj-Q8_0`) servido por `tools/llama.cpp/llama-server.exe` con `-ngl 0` (100% CPU, 0 VRAM). La app lo arranca y detiene automáticamente mediante `app/llm_server.py`.
 - **6 Pestañas**:
@@ -24,7 +24,7 @@ Webapp local autónoma (**FastAPI + Jinja2 + Vanilla ES Modules / CSS modular**,
 
 ---
 
-## 2. Guía para Asistir en la Instalación (`INSTALAR.bat` / `install/install.ps1`)
+## 2. Guía para Asistir en la Instalación (`install.bat` / `install/install.ps1`)
 
 El instalador está diseñado en **Modo Hermético 100% Portable** para no colisionar con instalaciones previas de Python (3.10, 3.11, 3.12, 3.13), Conda, Automatic1111 o Forge en la PC del usuario:
 
@@ -34,12 +34,13 @@ El instalador está diseñado en **Modo Hermético 100% Portable** para no colis
    - Verifica `.venv\pyvenv.cfg`: si existe un `.venv` previo apuntando a un Python del sistema del usuario, lo elimina y recrea herméticamente.
 2. **Orden de Dependencias GPU**:
    - Clona `ComfyUI` (`v0.37.4`), instala los *custom nodes* (`ComfyUI-GGUF` fork *leejet*, `ComfyUI-KJNodes`, `ComfyUI-Frame-Interpolation`, `ComfyUI-ClipProj`, `ComfyUI-VDN-H3-Plus` y el nodo local `tools/custom_nodes/waifu_anima_patch`) junto con sus `requirements.txt` / `requirements-no-cupy.txt`, y **al final** fuerza `torch==2.11.0+cu130`, `torchvision==0.26.0+cu130`, `torchaudio==2.11.0+cu130`, `triton_windows==3.8.0.post28` y `SageAttention` (este último en bloque `try/catch` no bloqueante para compatibilidad con RTX 5000 Blackwell).
-3. **Banderas útiles de `install\install.ps1` (o pasadas a `INSTALAR.bat`)**:
-   - `INSTALAR.bat` (interactivo: instala engine + LLM + pregunta si descargar ~100 GB de modelos recomendados + VDN-H3).
-   - `INSTALAR.bat -SkipModels` (instala solo Engine + App + LLM ~15 GB; requiere >= 25 GB libres; ideal para usuarios que usarán sus propios checkpoints SDXL/Anima).
-   - `INSTALAR.bat -SkipModels -SkipLlm` (solo Engine + App ~8 GB).
-   - `INSTALAR.bat -IncludeOptional` (incluye modelos opcionales como Ref2VA DiT y WD14).
-   - `INSTALAR.bat -IncludeTrainer` (instala `tools/kohya` con `sd-scripts` v0.12.0 en su propio venv para entrenar LoRAs).
+3. **Banderas útiles de `install\install.ps1` (o pasadas a `install.bat`)**:
+   - `install.bat` (interactivo: instala engine + LLM + pregunta si descargar ~100 GB de modelos recomendados + VDN-H3).
+   - `install.bat -SkipModels` (instala solo Engine + App + LLM ~15 GB; requiere >= 25 GB libres; ideal para usuarios que usarán sus propios checkpoints SDXL/Anima).
+   - `install.bat -SkipModels -SkipLlm` (solo Engine + App ~8 GB).
+   - `install.bat -IncludeOptional` (incluye modelos opcionales como Ref2VA DiT y WD14).
+   - `install.bat -IncludeTrainer` (instala `tools/kohya` con `sd-scripts` v0.12.0 en su propio venv para entrenar LoRAs).
+   - `install.bat -SkipFfmpeg` (no descarga FFmpeg/FFprobe; Timeline/export/fade quedan deshabilitados).
 4. **Diagnóstico Rápido de Problemas de Instalación**:
    - **`torch.cuda.is_available() == False` o error de driver CUDA**: El stack usa `cu130` (CUDA 13.0). El usuario debe actualizar su **Driver NVIDIA Game Ready / Studio a versión >= 570.xx**. Verificar con `nvidia-smi`.
    - **Faltan adaptadores de vídeo VDN-H3 (8 pasos)**: Ejecutar `& .\.venv\Scripts\python.exe scripts\download_models.py --vdn`.
@@ -54,7 +55,7 @@ El instalador está diseñado en **Modo Hermético 100% Portable** para no colis
 2. **Prohibido leer archivos >300 líneas completos**: Consulta primero las tablas de las secciones 4, 5 y 6 de este documento, localiza el símbolo con `grep` / `Select-String` y lee únicamente el rango necesario (`offset`, `limit=80`).
 3. **Verificación obligatoria antes de cerrar cambios**:
    ```powershell
-   & .\.venv\Scripts\python.exe -m unittest discover -s tests   # 1.611 tests offline en CPU (~58 s)
+   & .\.venv\Scripts\python.exe -m unittest discover -s tests   # 1.612 tests offline en CPU (~58 s)
    node tests/test_upscale_compare_logic.mjs                    # 10 tests de lógica JS del comparador
    & .\.venv\Scripts\python.exe -m app.health                   # Diagnóstico de rutas y servicios
    ```

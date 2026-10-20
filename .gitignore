@@ -22,6 +22,9 @@ tools/kohya/venv/
 # Runtime llama.cpp stock (binarios CUDA descargados; no se versionan)
 tools/llama.cpp/
 
+# FFmpeg/FFprobe portables (los descarga install.bat; no se versionan)
+tools/ffmpeg/
+
 # Accesos directos de Windows
 *.lnk
 

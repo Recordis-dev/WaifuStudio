@@ -6,7 +6,8 @@
     Preflight (Windows 10/11 x64 + GPU NVIDIA + >=140 GB libres) -> uv +
     CPython 3.12.12 -> .venv + requirements*.txt -> ComfyUI v0.37.4 pineado +
     dependencias del engine -> custom nodes pineados + ckpts RIFE +
-    wheel SageAttention -> PREGUNTA "instalar modelos recomendados" con el
+    wheel SageAttention -> FFmpeg/FFprobe portables en tools\ffmpeg ->
+    PREGUNTA "instalar modelos recomendados" con el
     espacio estimado (se omite la pregunta con -SkipModels o -Yes) -> descarga
     y verificacion sha256 de install\manifest\manifest.models.json (los assets
     sin URL publica verificada quedan como aporte manual) -> registra en la
@@ -31,6 +32,8 @@
     Descarga tambien entradas required=false no obsoletas (R2V, stock del Editor).
 .PARAMETER SkipVerify
     No ejecuta la suite de tests ni app.health al final.
+.PARAMETER SkipFfmpeg
+    No descarga FFmpeg/FFprobe portables (Timeline, fade y concatenado no funcionaran).
 .PARAMETER NoUserEnv
     No escribe WAIFU_COMFY_ROOT/WAIFU_COMFY_URL como variables de usuario.
 #>
@@ -44,6 +47,7 @@ param(
     [switch]$IncludeOptional,
     [switch]$IncludeTrainer,
     [switch]$SkipVerify,
+    [switch]$SkipFfmpeg,
     [switch]$NoUserEnv
 )
 
@@ -572,7 +576,7 @@ function Confirm-RecommendedModels {
     Write-Host ("  {0} archivos, ~{1} GB de descarga (SSD SATA recomendado)." -f $summary.Count, $summary.Gb)
     $answer = Read-Host 'Instalar modelos recomendados? [S/n]'
     if ($answer -match '^(n|no)$') {
-        Write-Warn 'Sin modelos: la app arrancara sin modelos registrados; ejecuta INSTALAR.bat cuando quieras.'
+        Write-Warn 'Sin modelos: la app arrancara sin modelos registrados; ejecuta install.bat cuando quieras.'
         return $false
     }
     return $true
@@ -606,12 +610,66 @@ function Register-RecommendedModels {
     $payload = [ordered]@{
         version  = 1
         models   = $entries
-        _comment = 'Capa de usuario: modelos locales. Editable a mano; INSTALAR.bat anade los recomendados presentes en disco.'
+        _comment = 'Capa de usuario: modelos locales. Editable a mano; install.bat anade los recomendados presentes en disco.'
     }
     $json = $payload | ConvertTo-Json -Depth 12
     $utf8 = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($target, $json, $utf8)
     Write-Ok ("data\registry\models.json: {0} modelo(s) recomendado(s) registrados" -f $added)
+}
+
+function Install-Ffmpeg {
+    if ($SkipFfmpeg) {
+        Write-Warn 'SkipFfmpeg: se omite FFmpeg; Timeline/export/fade no estaran disponibles.'
+        return
+    }
+    $ffmpegDir = Join-Path $Root 'tools\ffmpeg'
+    $ffmpegExe = Join-Path $ffmpegDir 'ffmpeg.exe'
+    $ffprobeExe = Join-Path $ffmpegDir 'ffprobe.exe'
+    if ((Test-Path -LiteralPath $ffmpegExe) -and (Test-Path -LiteralPath $ffprobeExe)) {
+        try {
+            $version = (& $ffmpegExe -version 2>$null | Select-Object -First 1)
+            & $ffprobeExe -version 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0 -and $version) {
+                Write-Ok ("FFmpeg ya instalado: {0}" -f $version)
+                return
+            }
+        } catch {
+            Write-Warn 'FFmpeg existente no ejecutable; se reinstala.'
+        }
+    }
+
+    Write-Step 'FFmpeg/FFprobe portables (tools\ffmpeg)'
+    $zip = Join-Path $StateDir 'ffmpeg-release-essentials.zip'
+    $extract = Join-Path $StateDir 'ffmpeg-extract'
+    $url = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
+    try {
+        New-Item -ItemType Directory -Force -Path $StateDir, $ffmpegDir | Out-Null
+        Get-VerifiedFile -Url $url -Destination $zip -Sha256 '' -Bytes 0
+        if (Test-Path -LiteralPath $extract) {
+            Remove-Item -LiteralPath $extract -Recurse -Force
+        }
+        Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
+        $ffmpegSource = Get-ChildItem -LiteralPath $extract -Recurse -Filter 'ffmpeg.exe' -File |
+            Select-Object -First 1
+        if (-not $ffmpegSource) { throw 'el ZIP no contiene ffmpeg.exe' }
+        $ffprobeSource = Join-Path $ffmpegSource.DirectoryName 'ffprobe.exe'
+        if (-not (Test-Path -LiteralPath $ffprobeSource)) {
+            throw 'el ZIP no contiene ffprobe.exe'
+        }
+        Copy-Item -LiteralPath $ffmpegSource.FullName -Destination $ffmpegExe -Force
+        Copy-Item -LiteralPath $ffprobeSource -Destination $ffprobeExe -Force
+        $version = (& $ffmpegExe -version 2>$null | Select-Object -First 1)
+        & $ffprobeExe -version 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0 -or -not $version) {
+            throw 'los binarios copiados no ejecutan correctamente'
+        }
+        Write-Ok ("FFmpeg/FFprobe instalados: {0}" -f $version)
+    } catch {
+        Write-Warn ("No se pudo instalar FFmpeg: {0}" -f $_.Exception.Message)
+        Write-Warn 'Timeline/export/fade quedaran deshabilitados hasta instalarlo en tools\ffmpeg.'
+        $script:Pending += 'ffmpeg/ffprobe'
+    }
 }
 
 function Install-Llm {
@@ -641,6 +699,7 @@ Invoke-Preflight
 Install-Uv
 Install-Python
 Install-Venv
+Install-Ffmpeg
 Install-Engine
 if ($IncludeTrainer -or ($IncludeOptional -and -not $SkipEngine)) {
     Install-Trainer
@@ -656,12 +715,12 @@ Invoke-FinalVerification
 Write-Host ''
 if ($script:Pending.Count -gt 0) {
     Write-Warn ("Pendientes de aporte manual: {0}" -f ($script:Pending -join ', '))
-    Write-Warn 'El set recomendado incluye 2 modelos Anima de Civitai (age-gate): descargalos a mano, dejando cada archivo en su ruta exacta (ver registry\recommended-v1.json), y re-ejecuta INSTALAR.bat.'
+    Write-Warn 'El set recomendado incluye 2 modelos Anima de Civitai (age-gate): descargalos a mano, dejando cada archivo en su ruta exacta (ver registry\recommended-v1.json), y re-ejecuta install.bat.'
 }
 Write-Host 'Instalacion terminada. Siguientes pasos:' -ForegroundColor Green
-Write-Host '  1) INICIAR_ENGINE.bat  (dejalo abierto)'
-Write-Host '  2) INICIAR_WAIFU.bat   (abre http://127.0.0.1:8765)'
-Write-Host '  3) ABRIR_APP.bat       (opcional: abre ventana ligera dedicada ~100 MB RAM)'
+Write-Host '  1) start.bat        (arranca engine + app y abre la ventana)'
+Write-Host '  2) healthcheck.bat  (opcional: diagnostico de rutas/servicios)'
+Write-Host '  3) stop.bat         (detiene app + engine)'
 Write-Host '  4) LoRAs propias: pestana Imagen > Elegir LoRAs > Gestionar biblioteca'
 if ($script:Pending.Count -gt 0) { exit 2 }
 exit 0

@@ -22,11 +22,11 @@
 
 | Module | What It Does |
 |---|---|
-| ⚡ **Portable Windows Installer** | `INSTALAR.bat` and `ABRIR_APP.bat` set up an isolated Python/ComfyUI environment on Windows and download the configured weights. |
+| ⚡ **Portable Windows Installer** | `install.bat` sets up an isolated Python/ComfyUI environment on Windows, downloads the configured weights, and installs portable **FFmpeg/FFprobe** in `tools\ffmpeg`. Use `start.bat` to launch, `stop.bat` to stop, and `healthcheck.bat` to diagnose. |
 | 🎭 **Character Manager (OC Maker)** | Store character traits, generate Front / Side / Back character sheets, and launch local LoRA training jobs. |
 | 🧠 **Prompt Assistant** | 91,357 Danbooru tags indexed in SQLite FTS5 + optional local CPU LLM assistant (`Qwen3.5-9B` GGUF) for tag expansion and vision captioning. |
 | 🎞️ **Video H3 (`MinimaxH3 VDN`)** | 8-step video generation using **MinimaxH3 VideoDeltaNet (VDN)** with native audio and camera motion presets (`I2V`, `FLF2V`, `Ref2VA`, `V2V`). |
-| 🎬 **Basic Timeline Studio** | Simple web sequencer to stitch generated video clips and static images with an external audio track via FFmpeg, plus shortcuts to continue clips via `I2V` / `FLF2V`. |
+| 🎬 **Basic Timeline Studio** | Simple web sequencer to stitch generated video clips and static images with an external audio track via bundled FFmpeg, plus shortcuts to continue clips via `I2V` / `FLF2V`. |
 | 🔍 **Upscaler & RIFE FPS** | Image and video upscaling (`RealESRGAN`, `AnimeSharp`, `UltraSharp`), optional diffusion pass (`Anima` / `Qwen 2.1`), `RCAS` sharpening, and RIFE frame interpolation. |
 
 ---
@@ -34,8 +34,10 @@
 ## 🚀 Quick Start (Windows)
 
 1. **Clone or Download** this repository to your drive (e.g. `E:\IA\WAIFU`).
-2. **Run `INSTALAR.bat`**: Sets up the portable Python environment, ComfyUI backend, custom nodes, and downloads the required models.
-3. **Run `ABRIR_APP.bat`**: Starts the FastAPI + ComfyUI backend and opens `http://127.0.0.1:8765` in your browser.
+2. **Run `install.bat`**: Sets up the portable Python environment, ComfyUI backend, custom nodes, portable FFmpeg/FFprobe, and the required models.
+3. **Run `start.bat`**: Starts the FastAPI + ComfyUI backend and opens `http://127.0.0.1:8765` in your browser.
+
+Use `stop.bat` to stop the app and engine, and `healthcheck.bat` to verify paths/services. FFmpeg is bundled by the installer; add `-SkipFfmpeg` only for minimal installs (Timeline/export/fade will be unavailable).
 
 > 💡 **Built-in Guide**: Check the **📖 Guide** tab inside the app for a walkthrough of each workspace and its controls.
 

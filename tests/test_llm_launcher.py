@@ -14,24 +14,47 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class LauncherFilesTests(unittest.TestCase):
-    def test_existen_los_cuatro_launchers(self):
+    def test_existen_los_launchers(self):
         for name in (
             "scripts/start_llm.ps1",
             "scripts/stop_llm.ps1",
-            "INICIAR_LLM.bat",
-            "DETENER_LLM.bat",
+            "install.bat",
+            "start.bat",
+            "stop.bat",
+            "healthcheck.bat",
+            "start_engine.bat",
+            "stop_engine.bat",
         ):
             with self.subTest(name=name):
                 self.assertTrue((ROOT / name).is_file(), f"falta {name}")
 
-    def test_bat_llaman_a_sus_ps1(self):
+    def test_no_quedan_launchers_legacy(self):
+        for name in (
+            "INSTALAR.bat",
+            "ABRIR_APP.bat",
+            "INICIAR_WAIFU.bat",
+            "DETENER_WAIFU.bat",
+            "INICIAR_ENGINE.bat",
+            "DETENER_ENGINE.bat",
+            "INICIAR_LLM.bat",
+            "DETENER_LLM.bat",
+            "VERIFICAR_WAIFU.bat",
+        ):
+            with self.subTest(name=name):
+                self.assertFalse((ROOT / name).exists(), f"legacy presente: {name}")
+
+    def test_bats_llaman_a_sus_ps1(self):
         self.assertIn(
-            'scripts\\start_llm.ps1',
-            (ROOT / "INICIAR_LLM.bat").read_text(encoding="utf-8"),
+            'scripts\\open_window.ps1',
+            (ROOT / "start.bat").read_text(encoding="utf-8"),
         )
+        stop_text = (ROOT / "stop.bat").read_text(encoding="utf-8")
+        self.assertIn('scripts\\stop_app.ps1', stop_text)
+        self.assertIn('scripts\\stop_llm.ps1', stop_text)
+        self.assertIn('scripts\\stop_engine.ps1', stop_text)
         self.assertIn(
-            'scripts\\stop_llm.ps1',
-            (ROOT / "DETENER_LLM.bat").read_text(encoding="utf-8"),
+            'install\\install.ps1',
+            (ROOT / "install.bat").read_text(encoding="utf-8"),
         )
 
 
@@ -108,7 +131,7 @@ class StartLlmScriptTests(unittest.TestCase):
 
 class VerifyWaifuBatTests(unittest.TestCase):
     def test_reenvia_argumentos_a_app_health(self):
-        text = (ROOT / "VERIFICAR_WAIFU.bat").read_text(encoding="utf-8")
+        text = (ROOT / "healthcheck.bat").read_text(encoding="utf-8")
         self.assertIn("app.health", text)
         self.assertIn("%*", text)
 

@@ -1,5 +1,5 @@
 {
   "version": 1,
   "models": [],
-  "_comment": "Vacio a proposito: el repo publico solo trae el codigo. La app lee ademas la capa de usuario data/registry/models.json (INSTALAR.bat la rellena con los modelos recomendados presentes o se edita a mano). Recomendaciones: registry/recommended-v1.json; guia: AGENTS.md."
+  "_comment": "Vacio a proposito: el repo publico solo trae el codigo. La app lee ademas la capa de usuario data/registry/models.json (install.bat la rellena con los modelos recomendados presentes o se edita a mano). Recomendaciones: registry/recommended-v1.json; guia: AGENTS.md."
 }
