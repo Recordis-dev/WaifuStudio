@@ -31,6 +31,8 @@
 .timeline-media-shelf {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+  grid-auto-rows: max-content;
+  align-content: start;
   gap: 6px;
   max-height: 200px;
   overflow-y: auto;
@@ -45,6 +47,7 @@
   border-radius: 4px;
   overflow: hidden;
   aspect-ratio: 1;
+  min-height: 0;
   background: #000;
   cursor: pointer;
   border: 1px solid transparent;
@@ -56,6 +59,8 @@
 
 .timeline-media-item img,
 .timeline-media-item video {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -66,6 +71,7 @@
   position: absolute;
   bottom: 2px;
   right: 2px;
+  z-index: 2;
   background: rgba(0, 0, 0, 0.75);
   color: #fff;
   border: 1px solid var(--accent, #ff4081);
