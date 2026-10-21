@@ -23,9 +23,12 @@
 .timeline-viewport {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .timeline-media-shelf {
@@ -93,13 +96,14 @@
   justify-content: center;
   position: relative;
   overflow: hidden;
-  max-height: 380px;
+  flex: 0 0 auto;
+  max-height: min(380px, 55vh);
 }
 
 #timeline-preview-video,
 #timeline-preview-image {
   max-width: 100%;
-  max-height: 330px;
+  max-height: min(330px, calc(55vh - 38px));
   width: auto;
   height: auto;
   border-radius: 6px;
@@ -116,6 +120,7 @@
   background: rgba(18, 18, 22, 0.9);
   box-sizing: border-box;
   font-size: 12px;
+  flex: 0 0 auto;
 }
 
 .timeline-tracks-container {
