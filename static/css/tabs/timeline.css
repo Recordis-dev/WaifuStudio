@@ -141,12 +141,38 @@
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding: 8px 4px;
+  overflow-y: hidden;
+  padding: 8px 4px 12px;
   min-height: 130px;
   background: #111116;
   border-radius: 6px;
   border: 1px solid #24242d;
   align-items: stretch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent, #ff4081) rgba(0, 0, 0, 0.35);
+  -ms-overflow-style: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior-x: contain;
+}
+
+.timeline-track::-webkit-scrollbar {
+  display: block;
+  height: 10px;
+}
+
+.timeline-track::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 5px;
+}
+
+.timeline-track::-webkit-scrollbar-thumb {
+  background: var(--accent, #ff4081);
+  border-radius: 5px;
+  border: 2px solid #111116;
+}
+
+.timeline-track::-webkit-scrollbar-thumb:hover {
+  background: #ff6b93;
 }
 
 .timeline-clip-card {
