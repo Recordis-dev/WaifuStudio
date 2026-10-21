@@ -120,3 +120,4 @@ Puedes alternar la interfaz entre **Español (`ES`)** e **Inglés (`EN`)** en cu
 
 - Distribuido bajo la **[Licencia MIT](LICENSE)** — entregado sin garantías.
 - Construido sobre [ComfyUI](https://github.com/comfyanonymous/ComfyUI), **MinimaxH3 VDN (VideoDeltaNet)**, **Anima**, [Qwen](https://github.com/QwenLM) y [FFmpeg](https://ffmpeg.org/).
+- **Banco de workflows Wan 2.2 I2V / investigación para 8 GB VRAM**: **Artelive** (contribución comunitaria; pendiente de integración).

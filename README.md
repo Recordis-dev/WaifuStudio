@@ -120,3 +120,4 @@ Switch the interface between **English (`EN`)** and **Español (`ES`)** at any t
 
 - Released under the **[MIT License](LICENSE)** — no warranties provided.
 - Built on top of [ComfyUI](https://github.com/comfyanonymous/ComfyUI), **MinimaxH3 VDN (VideoDeltaNet)**, **Anima**, [Qwen](https://github.com/QwenLM), and [FFmpeg](https://ffmpeg.org/).
+- **Wan 2.2 I2V workflow bank / 8 GB VRAM research**: **Artelive** (community contribution; pending integration).
