@@ -1,5 +1,9 @@
 # ✨ WaifuStudio v2.0 — Estudio Local de Anime & Waifus (Proyecto Personal)
 
+<p align="center">
+  <img src="static/waifustudio-icon.png" width="112" alt="Icono de WaifuStudio">
+</p>
+
 [![Versión](https://img.shields.io/badge/versión-2.0.0-ff4081.svg)](https://github.com/gusnion/WaifuStudio)
 [![Licencia: MIT](https://img.shields.io/badge/Licencia-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Hardware Testeado](https://img.shields.io/badge/Testeado%20en-RTX%203060%2012GB-76b900.svg)](https://www.nvidia.com)
@@ -38,6 +42,16 @@
 3. **Ejecuta `start.bat`**: Levanta el servidor local y abre `http://127.0.0.1:8765` en tu navegador.
 
 Usa `stop.bat` para detener app y engine, y `healthcheck.bat` para verificar rutas/servicios. FFmpeg se instala con el instalador; usa `-SkipFfmpeg` solo para instalaciones mínimas (Timeline/export/fade no estarán disponibles).
+
+`install.bat` también crea/actualiza `WAIFUSTUDIO.lnk` con el icono de la app. Si mueves la carpeta, vuelve a ejecutar `install.bat` o:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\create_shortcut.ps1
+```
+
+### Icono
+
+El icono actual es un marcador de posición provisional. La fuente es `waifystudioicon.ico`; la app sirve `static/favicon.ico` y el README usa `static/waifustudio-icon.png`. Para cambiarlo, actualiza esos archivos y vuelve a ejecutar `scripts\create_shortcut.ps1` (el acceso directo guarda la ruta del icono, no una copia).
 
 > 💡 **Guía Integrada**: Dentro de la app tienes la pestaña **📖 Guía** con explicaciones de uso de cada pestaña y sus controles.
 

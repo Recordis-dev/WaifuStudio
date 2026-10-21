@@ -1,5 +1,9 @@
 # ✨ WaifuStudio v2.0 — Local Anime & Waifu Studio (Personal Project)
 
+<p align="center">
+  <img src="static/waifustudio-icon.png" width="112" alt="WaifuStudio icon">
+</p>
+
 [![Version](https://img.shields.io/badge/version-2.0.0-ff4081.svg)](https://github.com/gusnion/WaifuStudio)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Tested GPU](https://img.shields.io/badge/Tested%20on-RTX%203060%2012GB-76b900.svg)](https://www.nvidia.com)
@@ -38,6 +42,16 @@
 3. **Run `start.bat`**: Starts the FastAPI + ComfyUI backend and opens `http://127.0.0.1:8765` in your browser.
 
 Use `stop.bat` to stop the app and engine, and `healthcheck.bat` to verify paths/services. FFmpeg is bundled by the installer; add `-SkipFfmpeg` only for minimal installs (Timeline/export/fade will be unavailable).
+
+`install.bat` also creates/updates `WAIFUSTUDIO.lnk` with the app icon, so moving the folder only requires re-running `install.bat` or:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\create_shortcut.ps1
+```
+
+### Icon
+
+The current icon is a provisional placeholder. The source is `waifystudioicon.ico`; the app serves `static/favicon.ico` and the README uses `static/waifustudio-icon.png`. To replace it, update those files and re-run `scripts\create_shortcut.ps1` (the shortcut stores the icon path, not a copy).
 
 > 💡 **Built-in Guide**: Check the **📖 Guide** tab inside the app for a walkthrough of each workspace and its controls.
 

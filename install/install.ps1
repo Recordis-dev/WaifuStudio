@@ -36,6 +36,8 @@
     No descarga FFmpeg/FFprobe portables (Timeline, fade y concatenado no funcionaran).
 .PARAMETER NoUserEnv
     No escribe WAIFU_COMFY_ROOT/WAIFU_COMFY_URL como variables de usuario.
+.PARAMETER NoShortcut
+    No crea/actualiza WAIFUSTUDIO.lnk con el icono de la app.
 #>
 [CmdletBinding()]
 param(
@@ -48,7 +50,8 @@ param(
     [switch]$IncludeTrainer,
     [switch]$SkipVerify,
     [switch]$SkipFfmpeg,
-    [switch]$NoUserEnv
+    [switch]$NoUserEnv,
+    [switch]$NoShortcut
 )
 
 $ErrorActionPreference = 'Stop'
@@ -681,6 +684,23 @@ function Install-Llm {
     }
 }
 
+function Install-Shortcut {
+    if ($NoShortcut) { Write-Warn 'NoShortcut: se omite WAIFUSTUDIO.lnk'; return }
+    $shortcutScript = Join-Path $Root 'scripts\create_shortcut.ps1'
+    if (-not (Test-Path -LiteralPath $shortcutScript)) {
+        Write-Warn 'No se encontro scripts\create_shortcut.ps1; no se creo el acceso directo.'
+        return
+    }
+    Write-Step 'acceso directo con icono (WAIFUSTUDIO.lnk)'
+    try {
+        & $shortcutScript -Root $Root -Quiet
+        Write-Ok 'WAIFUSTUDIO.lnk actualizado con static\favicon.ico'
+    } catch {
+        Write-Warn ("No se pudo crear WAIFUSTUDIO.lnk: {0}" -f $_.Exception.Message)
+        $script:Pending += 'acceso directo WAIFUSTUDIO.lnk'
+    }
+}
+
 Write-Host ''
 Write-Host 'WAIFU installer' -ForegroundColor Cyan
 Write-Host ("Raiz: {0}" -f $Root)
@@ -710,6 +730,7 @@ Install-Models
 Register-RecommendedModels
 Install-Llm
 Write-Environment
+Install-Shortcut
 Invoke-FinalVerification
 
 Write-Host ''
