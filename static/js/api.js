@@ -119,10 +119,23 @@ async function pollJob(
     setCancelVisible(true, cancelButtonId);
   }
   let lastStatus = null;
+  let invalidResponses = 0;
   try {
     for (;;) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      const job = await api(`/api/jobs/${encodeURIComponent(jobId)}`, { timeoutMs: 15000 });
+      const payload = await api(`/api/jobs/${encodeURIComponent(jobId)}`, { timeoutMs: 15000 });
+      if (!payload || typeof payload !== "object" || typeof payload.status !== "string") {
+        invalidResponses += 1;
+        if (invalidResponses < 3) {
+          statusFn("Esperando estado del job...");
+          continue;
+        }
+        throw new Error(
+          "El servidor no devolvió un estado válido del job; revisa la Galería o reinicia la app."
+        );
+      }
+      invalidResponses = 0;
+      const job = payload;
       if (job.status !== lastStatus) {
         lastStatus = job.status;
         window.dispatchEvent(
