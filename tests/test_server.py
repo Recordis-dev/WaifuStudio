@@ -6100,6 +6100,24 @@ class GalleryDeleteRoutesTests(ServerTestCase):
         self.assertEqual(res.status_code, 404)
         self.assertIn("no encontrado", res.json()["error"])
 
+    def test_get_gallery_item_exposes_params_and_urls(self):
+        gen_id = self.store.add(
+            "h3",
+            "timeline clip",
+            params={"width": 480, "height": 864, "profile": "personalizado"},
+            status="done",
+            kind="video",
+        )
+        self.store.update(gen_id, outputs=["clip.mp4"])
+        item = self.make_client().get(f"/api/gallery/{gen_id}").json()
+        self.assertEqual(item["id"], gen_id)
+        self.assertEqual(item["params"]["width"], 480)
+        self.assertEqual(item["params"]["profile"], "personalizado")
+        self.assertEqual(item["urls"], [f"/media/{gen_id}/clip.mp4"])
+        self.assertEqual(
+            self.make_client().get("/api/gallery/99999").status_code, 404
+        )
+
     def test_delete_gallery_item_409_when_queued_or_running(self):
         client = self.make_client()
         for status in ("queued", "running"):

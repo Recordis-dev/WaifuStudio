@@ -513,6 +513,25 @@ function applyInheritedVideoConfig(payload, inherited) {
   if (inherited.include_audio !== null) payload.include_audio = inherited.include_audio;
 }
 
+async function hydrateClipParams(clips) {
+  const list = Array.isArray(clips) ? clips : [clips];
+  let changed = false;
+  for (const clip of list) {
+    if (!clip || clip.generation_id == null) continue;
+    if (clip.params && Object.keys(clip.params).length) continue;
+    try {
+      const item = await api(`/api/gallery/${encodeURIComponent(clip.generation_id)}`);
+      if (item && item.params && Object.keys(item.params).length) {
+        clip.params = item.params;
+        changed = true;
+      }
+    } catch (_) {
+      // Sin metadatos: la validación de herencia decide si se puede generar.
+    }
+  }
+  return changed;
+}
+
 function setTimelineAiBusy(busy) {
   const btn = $("btn-timeline-ai-generate");
   if (btn) btn.disabled = Boolean(busy);
@@ -569,7 +588,11 @@ async function triggerAiAction(actionType, targetClipIndex = null) {
       const refIdx = targetClipIndex !== null ? targetClipIndex : (state.selectedIndex ?? (clips.length - 1));
       const refClip = clips[refIdx];
       if (!refClip) throw new Error("No hay clip de referencia para continuar");
+      await hydrateClipParams([refClip]);
       const inherited = inheritedVideoConfig(refClip);
+      if (!inherited.aspect && !inherited.width) {
+        throw new Error("El clip de referencia no tiene configuración guardada; vuelve a añadirlo desde la Biblioteca.");
+      }
       state.aiGenerating = true;
       renderTracks();
       const frameRes = await postJson("/api/timeline/extract_frame", {
@@ -597,7 +620,11 @@ async function triggerAiAction(actionType, targetClipIndex = null) {
       if (clips.length < 2) throw new Error("Se requieren al menos 2 clips para puente FLF2V");
       const idxA = targetClipIndex !== null ? targetClipIndex : Math.max(0, clips.length - 2);
       const idxB = idxA + 1;
+      await hydrateClipParams([clips[idxA], clips[idxB]]);
       const inherited = inheritedVideoConfig(clips[idxA]);
+      if (!inherited.aspect && !inherited.width) {
+        throw new Error("El clip de referencia no tiene configuración guardada; vuelve a añadirlo desde la Biblioteca.");
+      }
       state.aiGenerating = true;
       renderTracks();
       setAiStatus("Extrayendo extremos para puente FLF2V...");
@@ -675,10 +702,12 @@ export function initTimelineTab() {
     if (!id) return;
     try {
       const proj = await api(`/api/timeline/projects/${id}`);
+      const hydrated = await hydrateClipParams(proj.data ? proj.data.clips : []);
       state.current = proj;
       const nameInput = $("timeline-project-name");
       if (nameInput) nameInput.value = proj.name;
-      renderTracks(); selectClip(0); setTimelineStatus(`Proyecto '${proj.name}' cargado`);
+      renderTracks(); selectClip(0);
+      setTimelineStatus(hydrated ? "Proyecto cargado (configuración de clips recuperada)" : `Proyecto '${proj.name}' cargado`);
     } catch (err) { setTimelineStatus(err.message, true); }
   });
 

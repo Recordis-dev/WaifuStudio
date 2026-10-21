@@ -64,6 +64,25 @@ async def api_gallery(
     return {"items": items, "count": total}
 
 
+@router.get("/api/gallery/{id}")
+async def api_gallery_item(id: int, request: Request) -> Any:
+    """Devuelve una generacion concreta con `params` y `urls`.
+
+    Lo usa el Timeline para hidratar clips antiguos guardados sin `params`
+    (proyectos creados antes de la herencia de configuracion).
+    """
+    st = request.app.state.store
+    row = st.get(id)
+    if row is None:
+        return JSONResponse(status_code=404, content={"error": "no encontrado"})
+    item = dict(row)
+    item["urls"] = [
+        MEDIA_URL.format(gen_id=row["id"], name=name)
+        for name in (row.get("outputs") or [])
+    ]
+    return item
+
+
 @router.delete("/api/gallery/{id}")
 async def api_gallery_delete(id: int, request: Request) -> Any:
     st = request.app.state.store
