@@ -44,12 +44,25 @@ Useful commands:
 ```text
 start.bat        start the app and engine
 stop.bat         stop the app and engine
+update.bat       update a Git installation
 healthcheck.bat  check paths and services
 start_engine.bat start only ComfyUI
 stop_engine.bat  stop only ComfyUI
 ```
 
 FFmpeg is installed by default. `-SkipFfmpeg` is available for minimal installs, but Timeline export and concatenation will not work. `install.bat` also creates `WAIFUSTUDIO.lnk` with the application icon; if the folder is moved, run `scripts\create_shortcut.ps1` or re-run the installer.
+
+### Updating
+
+`update.bat` is for installations cloned with Git. It stops the app, saves `data/` and `ComfyUI/user/` under `%LOCALAPPDATA%\WaifuStudio\backups\update-<date>`, runs `git pull --ff-only`, re-runs the installer and starts the app again.
+
+```powershell
+update.bat -NoStart
+update.bat -InstallModels
+update.bat -DryRun
+```
+
+By default it does not download new models; use `-InstallModels` for that. It refuses to run if the repository has tracked local changes, if the current branch is not `main`, or if ComfyUI still has active jobs. `install.bat -Update` is an alias for `update.bat`. ZIP installations cannot be updated this way; use a new folder and copy `data/` and `ComfyUI/user/`.
 
 The current icon is provisional. The source is `waifystudioicon.ico`; the app serves `static/favicon.ico` and the README uses `static/waifustudio-icon.png`.
 

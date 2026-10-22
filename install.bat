@@ -1,5 +1,11 @@
 @echo off
 setlocal
+
+if /I "%~1"=="-Update" (
+  call "%~dp0update.bat"
+  exit /b %ERRORLEVEL%
+)
+
 title WAIFU - Installer
 echo ============================================================
 echo  WAIFU - Installer (console)
