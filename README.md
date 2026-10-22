@@ -33,13 +33,66 @@ The application is designed around a single NVIDIA GPU and a Windows desktop. It
 | **Upscaler** | Available | Image upscaling with GAN, Hires Fix and Qwen Remaster modes, plus RCAS/Adaptive USM sharpening and RIFE interpolation. Video upscaling is limited to 300 frames per job. |
 | **Gallery and queue** | Available | SQLite-backed gallery, job history and a single-GPU FIFO queue shared by all tabs. |
 
-## Quick start (Windows)
+## Installation (Windows)
 
-1. Clone or download the repository.
-2. Run `install.bat`. It creates the isolated environment and downloads the configured models.
-3. Run `start.bat`. It starts ComfyUI, the FastAPI app and opens `http://127.0.0.1:8765`.
+### Before starting
 
-Useful commands:
+- Windows 10/11 64-bit.
+- NVIDIA GPU; the reference machine uses an RTX 3060 with 12 GB.
+- NVIDIA driver 570 or newer (the stack uses CUDA 13).
+- Git for Windows if you want automatic updates. ZIP installs work without Git.
+- Enough free disk space for the model set. The installer shows the size and asks before downloading.
+- A short local path is safer than a synced folder, for example `C:\AI\WaifuStudio`.
+- If an older copy is running, stop it first with `stop.bat`.
+
+### Option A: Git clone (recommended)
+
+1. Clone the repository:
+
+```powershell
+git clone https://github.com/gusnion/WaifuStudio.git
+cd WaifuStudio
+```
+
+2. Install:
+
+```powershell
+install.bat
+```
+
+The installer creates the isolated Python environment, ComfyUI, the custom nodes, FFmpeg and the shortcut. It also asks which models to download. Re-running it is safe: it verifies what already exists and only installs what is missing.
+
+3. Start the app:
+
+```powershell
+start.bat
+```
+
+It opens `http://127.0.0.1:8765` in a dedicated window.
+
+4. Stop or diagnose it:
+
+```powershell
+stop.bat
+healthcheck.bat
+```
+
+If the models are already on disk and you only need the engine and app:
+
+```powershell
+install.bat -SkipModels
+```
+
+Do not use `-SkipModels` for a first install if you still need the recommended models.
+
+### Option B: ZIP
+
+1. Download the ZIP and extract it to a new folder. Do not extract it over an old installation.
+2. Run `install.bat` inside the new folder.
+3. Run `start.bat`.
+4. Keep using that folder. ZIP installations do not have Git metadata, so `update.bat` cannot update them.
+
+### Commands
 
 ```text
 start.bat        start the app and engine
@@ -52,17 +105,50 @@ stop_engine.bat  stop only ComfyUI
 
 FFmpeg is installed by default. `-SkipFfmpeg` is available for minimal installs, but Timeline export and concatenation will not work. `install.bat` also creates `WAIFUSTUDIO.lnk` with the application icon; if the folder is moved, run `scripts\create_shortcut.ps1` or re-run the installer.
 
-### Updating
+## Updating
 
-`update.bat` is for installations cloned with Git. It stops the app, saves `data/` and `ComfyUI/user/` under `%LOCALAPPDATA%\WaifuStudio\backups\update-<date>`, runs `git pull --ff-only`, re-runs the installer and starts the app again.
+### Git installation
+
+`update.bat` stops the app, saves `data/` and `ComfyUI/user/` under `%LOCALAPPDATA%\WaifuStudio\backups\update-<date>`, runs `git pull --ff-only`, re-runs the installer and starts the app again.
+
+Before updating:
+
+- Finish or cancel active ComfyUI jobs.
+- If `git status --short` shows tracked changes, commit or save them. The updater refuses to overwrite them.
+
+Normal update:
 
 ```powershell
-update.bat -NoStart
-update.bat -InstallModels
+update.bat
+```
+
+Check first without changing anything:
+
+```powershell
 update.bat -DryRun
 ```
 
-By default it does not download new models; use `-InstallModels` for that. It refuses to run if the repository has tracked local changes, if the current branch is not `main`, or if ComfyUI still has active jobs. `install.bat -Update` is an alias for `update.bat`. ZIP installations cannot be updated this way; use a new folder and copy `data/` and `ComfyUI/user/`.
+Useful variants:
+
+```powershell
+update.bat -NoStart        # update without opening the app
+update.bat -InstallModels  # also download missing models
+```
+
+By default it does not download new models. It refuses to run if the repository has tracked local changes, if the current branch is not `main`, or if ComfyUI still has active jobs. `install.bat -Update` is an alias for `update.bat`.
+
+### ZIP installation
+
+There is no in-place updater for ZIP installs. Update manually:
+
+1. Stop the app with `stop.bat`.
+2. Back up `data/`, `ComfyUI/user/`, `.env` and `config.local.json` if they exist. Back up `ComfyUI/models/` too unless you plan to download the models again.
+3. Extract the new ZIP into a new folder.
+4. Copy `data/`, `ComfyUI/user/` and, if you kept them, `ComfyUI/models/` from the old folder into the new one.
+5. Run `install.bat` in the new folder.
+6. Start it and verify the gallery and projects before removing the old folder.
+
+The Git updater leaves a timestamped backup. Keep it until the new version has been tested.
 
 The current icon is provisional. The source is `waifystudioicon.ico`; the app serves `static/favicon.ico` and the README uses `static/waifustudio-icon.png`.
 
