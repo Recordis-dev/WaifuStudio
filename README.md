@@ -9,6 +9,7 @@
 [![Reference GPU](https://img.shields.io/badge/Reference%20GPU-RTX%203060%2012GB-76b900.svg)](https://www.nvidia.com)
 [![Engine](https://img.shields.io/badge/Engine-ComfyUI%20Backend-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Local by default](https://img.shields.io/badge/Local-by%20default-success.svg)]()
+[![Patreon](https://img.shields.io/badge/Patreon-gusnion-ff424d.svg)](https://www.patreon.com/gusnion)
 
 > English | [Español](README.es.md)
 
@@ -106,6 +107,14 @@ The following items are planned or under evaluation. They are not promises, not 
 Version 2.0 is a stabilization and documentation pass over the original application. The remediation, test work and agent-oriented groundwork were continued with **DeepSeek V4.1 Flash 1017** using **DSH**.
 
 The offline suite currently runs 1,613 tests. The README describes the app as it is; features that are only planned are listed under Roadmap.
+
+## Support
+
+Development is independent and the application remains MIT-licensed. If you want to support the time spent on testing, documentation and maintenance, there is a Patreon page:
+
+https://www.patreon.com/gusnion
+
+Support is optional and does not unlock or restrict any part of the application.
 
 ## License and credits
 
