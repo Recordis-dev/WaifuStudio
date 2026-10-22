@@ -79,8 +79,8 @@ function Stop-WaifuProcesses {
         if (-not (Test-Path -LiteralPath $script)) { continue }
         Write-Step ("deteniendo {0}" -f $name)
         & $script
-        if ($LASTEXITCODE -ne 0) {
-            throw ("{0} fallo (exit {1})" -f $name, $LASTEXITCODE)
+        if (-not $?) {
+            throw ("{0} fallo" -f $name)
         }
     }
 }
@@ -191,8 +191,12 @@ if (-not $changed -and -not $ForceInstall) {
         Write-Warn 'no se descargan modelos nuevos; usa -InstallModels si hace falta'
     }
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'install\install.ps1') @installArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw ("install.ps1 fallo (exit {0}). Backup: {1}" -f $LASTEXITCODE, $backupPath)
+    $installExit = $LASTEXITCODE
+    if ($installExit -ne 0 -and $installExit -ne 2) {
+        throw ("install.ps1 fallo (exit {0}). Backup: {1}" -f $installExit, $backupPath)
+    }
+    if ($installExit -eq 2) {
+        Write-Warn 'el instalador dejo modelos manuales pendientes; revisa install\README_INSTALL.md'
     }
 } else {
     Write-Warn 'se omite install.ps1 por -SkipInstall'
