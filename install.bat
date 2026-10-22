@@ -12,6 +12,7 @@ echo  WAIFU - Installer (console)
 echo  Installs engine + app deps + FFmpeg + ~106 GB of models.
 echo  Needs ~150 GB free (minimal install without models: ~25 GB).
 echo  Safe to re-run: only missing components are installed.
+echo  To update an existing Git install: install.bat -Update
 echo ============================================================
 echo.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install\install.ps1" %*
