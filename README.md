@@ -11,7 +11,7 @@
 [![Local by default](https://img.shields.io/badge/Local-by%20default-success.svg)]()
 [![Patreon](https://img.shields.io/badge/Patreon-gusnion-ff424d.svg)](https://www.patreon.com/gusnion)
 
-> English | [Español](README.es.md)
+> English | [Español](README.es.md) | [日本語](README.ja.md) | [中文](README.zh.md) | [Русский](README.ru.md)
 
 WaifuStudio is a local-first production workspace for anime images and short video. It brings image generation, character references, video generation, editing, upscaling, timeline assembly and gallery management into one web interface, with ComfyUI as the inference engine.
 
