@@ -152,6 +152,67 @@ The Git updater leaves a timestamped backup. Keep it until the new version has b
 
 The current icon is provisional. The source is `waifystudioicon.ico`; the app serves `static/favicon.ico` and the README uses `static/waifustudio-icon.png`.
 
+## Adding image models and LoRAs
+
+The repository does not include third-party checkpoints or LoRAs. The installer downloads the starter set; additional files are copied manually. There is no in-app model browser yet.
+
+### Where files go
+
+| Asset | Folder | Format | Notes |
+|---|---|---|---|
+| SDXL checkpoint | `ComfyUI/models/checkpoints/` | `.safetensors` | Includes CLIP and VAE. Illustrious, Pony and NoobAI-style SDXL checkpoints use this path. |
+| Anima 2.9B UNET | `ComfyUI/models/diffusion_models/` | `.safetensors` | Needs the Anima text encoder and VAE listed below. |
+| Anima LoRA | `ComfyUI/models/loras/anima/` | `.safetensors` | Subfolder is optional, but helps family detection. |
+| SDXL-family LoRA | `ComfyUI/models/loras/sdxl/` | `.safetensors` | Use only with SDXL/Illustrious checkpoints. |
+| Anima text encoder | `ComfyUI/models/text_encoders/` | `.safetensors` | Expected name: `qwen_3_06b_base.safetensors`. |
+| Anima VAE | `ComfyUI/models/vae/` | `.safetensors` | Expected name: `qwen_image_vae.safetensors`. |
+
+Use `.safetensors`. The automatic scanner only registers `.safetensors` files; `.ckpt` and `.pt` files are not picked up.
+
+### Download and install
+
+1. Download the model from its official page, normally Civitai or Hugging Face.
+   - On Civitai, use the **Model** or **LoRA** download, not the workflow, preview or training data.
+   - On Hugging Face, use **Files and versions** and download the `.safetensors` file.
+   - Age-gated models require an account and acceptance of their terms.
+2. Copy the file into the matching folder from the table.
+3. Keep the required Anima encoder/VAE names unchanged if you use Anima.
+4. Open the app and press the **reload** button in the Image tab, or call `GET /api/models?scan=1`.
+5. Open **Elegir LoRAs → Gestionar biblioteca** to register a LoRA, or let the scanner find it with `POST /api/loras/scan`.
+6. Select the model and run a small test image before using it in a project.
+
+Subfolders are scanned recursively. Organizing LoRAs as `loras/anima/...` and `loras/sdxl/...` is optional but useful when the file metadata does not identify its base model.
+
+### Compatible image families
+
+| Family | Compatible | Notes |
+|---|---|---|
+| **Anima 2.9B** | Yes | The main native family. 28-block models are the safe target. 40-block variants exist, but not every 28-block LoRA transfers cleanly. |
+| **SDXL** | Yes | Checkpoint with its own CLIP and VAE. |
+| **Illustrious** | Yes | SDXL architecture; treated as an SDXL checkpoint. |
+| **Pony** | Yes | SDXL architecture; prompt conventions differ. |
+| **NoobAI-style SDXL** | Yes | SDXL architecture; prompt conventions differ. |
+| **SD 1.5 / SD 2.1** | No | Not validated; the app assumes SDXL defaults and loaders. |
+| **Flux, Qwen-Image and other architectures** | No | The Image tab is built for Anima and SDXL. Qwen-Image belongs to the Editor, not this tab. |
+
+### Compatible LoRAs
+
+- **Anima LoRA** with an Anima UNET.
+- **SDXL/Illustrious/Pony LoRA** with an SDXL checkpoint.
+- Do not mix families. A LoRA trained for Anima will not work correctly on SDXL, and vice versa.
+- H3 and Wan LoRAs belong to video workflows, not the Image tab.
+- The app tries to read the trigger from the LoRA metadata. If it is missing, enter the trigger manually in the library.
+- Start with a weight around `0.6–0.8` for style LoRAs and `0.8–1.0` for character LoRAs. Adjust from there.
+
+### What is not addable from this screen
+
+- ControlNet, IP-Adapter, textual inversion and embeddings are not exposed in the Image tab.
+- There is no separate VAE selector; Anima uses its fixed encoder/VAE pair, and SDXL checkpoints carry their own.
+- Upscaler files are a separate, fixed catalog. Copying a new `.pth` into `upscale_models` does not add it to the Upscaler dropdown.
+- H3 video models and presets are not installed by dropping files into `checkpoints`.
+
+Check the model license before publishing generated work. The Anima models are non-commercial; SDXL and Civitai models have their own terms.
+
 ## Reference configuration
 
 These are the hardware and software used for development and validation. They are not minimum requirements.
