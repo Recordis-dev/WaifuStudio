@@ -14,6 +14,7 @@ import {
 } from "../state.js";
 import { $, on, setStatus, writeClipboard } from "../dom.js";
 import { postJson } from "../api.js";
+import { t } from "../i18n.js";
 import { openZoneInsert, seedZonePopoverSelection } from "./prompt_popover.js";
 
 function normalizeTags(tags) {
@@ -330,11 +331,10 @@ function updateGenerateState() {
     return;
   }
   button.disabled = !composePrompt() && !hasPendingZoneInput();
-  const isEn = (localStorage.getItem("waifu_lang") || "es").toLowerCase() === "en";
   if (state.activeJobsCount > 0) {
-    button.textContent = isEn ? "Queue (" + state.activeJobsCount + ")" : "Encolar (" + state.activeJobsCount + ")";
+    button.textContent = `${t("queue_prefix")} (${state.activeJobsCount})`;
   } else {
-    button.textContent = isEn ? "Generate" : "Generar";
+    button.textContent = t("generate");
   }
 }
 

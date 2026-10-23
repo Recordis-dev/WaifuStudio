@@ -15,6 +15,10 @@
 
 WaifuStudio es un espacio de producción local para imágenes anime y vídeo corto. Reúne generación de imágenes, referencias de personaje, generación de vídeo, edición, escalado, montaje en Timeline y gestión de galería en una sola interfaz web, con ComfyUI como motor de inferencia.
 
+## Idiomas
+
+La interfaz está disponible en **inglés (por defecto)**, **español**, **japonés**, **chino simplificado** y **ruso**. Usa el botón del globo en la barra superior para cambiar. Los nombres técnicos de modelos, los ejemplos de prompts, el contenido del usuario y algunos mensajes de error del backend permanecen en su idioma original.
+
 La aplicación está pensada para una única GPU NVIDIA y un escritorio Windows. No requiere cuenta, servicio en la nube ni telemetría. El instalador mantiene Python, ComfyUI y FFmpeg en una carpeta portable.
 
 > [!WARNING]

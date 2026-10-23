@@ -4,8 +4,16 @@
 // Dependencias: ninguna (utilidades nativas del navegador).
 
 import { state, SEED_RANDOM_KEY, SEED_RANDOM_MAX, PANEL_SECTIONS } from "./state.js";
+import { translateText } from "./i18n-core.js";
 
 const $ = (id) => document.getElementById(id);
+
+function setStatusText(el, text, isError = false) {
+  const source = String(text ?? "");
+  if (el.dataset) el.dataset.i18nSource = source;
+  el.textContent = translateText(source);
+  el.classList.toggle("error", Boolean(isError));
+}
 
 function on(id, event, handler) {
   const el = $(id);
@@ -27,7 +35,8 @@ function showUiBanner(message) {
       "background:#7a1f1f;color:#fff;font-weight:600;text-align:center";
     document.body.appendChild(banner);
   }
-  banner.textContent = message;
+  banner.dataset.i18nSource = String(message ?? "");
+  banner.textContent = translateText(String(message ?? ""));
 }
 
 function setStatus(text, isError = false) {
@@ -38,29 +47,25 @@ function setStatus(text, isError = false) {
     }
     return;
   }
-  el.textContent = text;
-  el.classList.toggle("error", Boolean(isError));
+  setStatusText(el, text, isError);
 }
 
 function setVideoStatus(text, isError = false) {
   const el = $("video-status");
   if (!el) return;
-  el.textContent = text;
-  el.classList.toggle("error", Boolean(isError));
+  setStatusText(el, text, isError);
 }
 
 function setEditorStatus(text, isError = false) {
   const el = $("editor-status");
   if (!el) return;
-  el.textContent = text;
-  el.classList.toggle("error", Boolean(isError));
+  setStatusText(el, text, isError);
 }
 
 function setUpscaleStatus(text, isError = false) {
   const el = $("upscale-status");
   if (!el) return;
-  el.textContent = text;
-  el.classList.toggle("error", Boolean(isError));
+  setStatusText(el, text, isError);
 }
 
 function setProgress(progress, prefix = "job") {
@@ -71,7 +76,8 @@ function setProgress(progress, prefix = "job") {
   if (!progress) {
     box.classList.add("hidden");
     fill.style.width = "0%";
-    text.textContent = "paso -/-";
+    if (text.dataset) text.dataset.i18nSource = "paso -/-";
+    text.textContent = translateText("paso -/-");
     return;
   }
   const percent = progress.percent == null ? 0 : Number(progress.percent);
@@ -83,7 +89,8 @@ function setProgress(progress, prefix = "job") {
   if (progress.node) {
     label += ` · nodo ${progress.node}`;
   }
-  text.textContent = label;
+  if (text.dataset) text.dataset.i18nSource = label;
+  text.textContent = translateText(label);
   box.classList.remove("hidden");
 }
 

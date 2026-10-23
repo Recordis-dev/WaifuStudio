@@ -43,6 +43,7 @@ import { reloadImageViewerFirstPage, selectedImageView, imageViewUrl } from "./i
 import { loadGalleryTab, openGalleryModal } from "./gallery.js";
 import { switchTab } from "../main.js";
 import { ResolutionKit } from "../components/resolution_kit.js";
+import { t } from "../i18n.js";
 
 let editorResolutionKit = null;
 let pendingEditorLoras = null;
@@ -748,8 +749,7 @@ async function generateEditor() {
   } finally {
     updateEditorControls();
     if (btn) {
-      const isEn = (localStorage.getItem("waifu_lang") || "es").toLowerCase() === "en";
-      btn.textContent = state.activeJobsCount > 0 ? (isEn ? `Queue (${state.activeJobsCount})` : `Encolar (${state.activeJobsCount})`) : (isEn ? "Generate" : "Generar");
+      btn.textContent = state.activeJobsCount > 0 ? `${t("queue_prefix")} (${state.activeJobsCount})` : t("generate");
     }
   }
 }
@@ -824,8 +824,7 @@ function initEditorTab() {
   window.addEventListener("waifu:queue-updated", () => {
     const btn = $("btn-editor-generate");
     if (btn) {
-      const isEn = (localStorage.getItem("waifu_lang") || "es").toLowerCase() === "en";
-      btn.textContent = state.activeJobsCount > 0 ? (isEn ? `Queue (${state.activeJobsCount})` : `Encolar (${state.activeJobsCount})`) : (isEn ? "Generate" : "Generar");
+      btn.textContent = state.activeJobsCount > 0 ? `${t("queue_prefix")} (${state.activeJobsCount})` : t("generate");
     }
   });
   on("btn-editor-compare", "click", () =>

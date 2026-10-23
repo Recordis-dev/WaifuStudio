@@ -20,6 +20,7 @@ import {
 } from "../dom.js";
 import { api, postJson, pollJob, cancelJob, enqueueJobs } from "../api.js";
 import { openLightbox } from "../components/lightbox.js";
+import { t } from "../i18n.js";
 import { imageViewUrl, reloadImageViewerFirstPage } from "./image_viewer.js";
 import { reloadVideoViewerFirstPage, videoEngineLabel, videoViewUrl } from "./video.js";
 import { switchTab } from "../main.js";
@@ -887,8 +888,7 @@ async function generateUpscale() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      const isEn = (localStorage.getItem("waifu_lang") || "es").toLowerCase() === "en";
-      btn.textContent = state.activeJobsCount > 0 ? (isEn ? `Queue (${state.activeJobsCount})` : `Encolar (${state.activeJobsCount})`) : (isEn ? "Upscale" : "Escalar");
+      btn.textContent = state.activeJobsCount > 0 ? `${t("queue_prefix")} (${state.activeJobsCount})` : t("upscale_run");
     }
   }
 }
@@ -903,8 +903,7 @@ function initUpscalerTab() {
   window.addEventListener("waifu:queue-updated", () => {
     const btn = $("btn-upscale");
     if (btn) {
-      const isEn = (localStorage.getItem("waifu_lang") || "es").toLowerCase() === "en";
-      btn.textContent = state.activeJobsCount > 0 ? (isEn ? `Queue (${state.activeJobsCount})` : `Encolar (${state.activeJobsCount})`) : (isEn ? "Upscale" : "Escalar");
+      btn.textContent = state.activeJobsCount > 0 ? `${t("queue_prefix")} (${state.activeJobsCount})` : t("upscale_run");
     }
   });
   on("upscale-file", "change", (event) => {

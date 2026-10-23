@@ -25,6 +25,7 @@ import {
   getThumbsCapacity,
 } from "../dom.js";
 import { api, postJson, pollJob, cancelJob, enqueueJobs } from "../api.js";
+import { t } from "../i18n.js";
 import {
   defaultH3Seconds,
   selectedH3Profile,
@@ -744,8 +745,7 @@ async function generateVideo() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      const isEn = (localStorage.getItem("waifu_lang") || "es").toLowerCase() === "en";
-      btn.textContent = state.activeJobsCount > 0 ? (isEn ? `Queue (${state.activeJobsCount})` : `Encolar (${state.activeJobsCount})`) : (isEn ? "Generate" : "Generar");
+      btn.textContent = state.activeJobsCount > 0 ? `${t("queue_prefix")} (${state.activeJobsCount})` : t("generate");
     }
   }
 }
@@ -817,8 +817,7 @@ function initVideoTab() {
   window.addEventListener("waifu:queue-updated", () => {
     const btn = $("btn-video-generate");
     if (btn) {
-      const isEn = (localStorage.getItem("waifu_lang") || "es").toLowerCase() === "en";
-      btn.textContent = state.activeJobsCount > 0 ? (isEn ? `Queue (${state.activeJobsCount})` : `Encolar (${state.activeJobsCount})`) : (isEn ? "Generate" : "Generar");
+      btn.textContent = state.activeJobsCount > 0 ? `${t("queue_prefix")} (${state.activeJobsCount})` : t("generate");
     }
   });
   on("video-engine", "change", applyVideoEngine);

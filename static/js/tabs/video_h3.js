@@ -24,6 +24,7 @@ import {
   readFileBase64,
 } from "../dom.js";
 import { api, postJson } from "../api.js";
+import { translateText } from "../i18n-core.js";
 import { applyVideoEngine } from "./video.js";
 
 let h3PromptResetTimer = null;
@@ -179,9 +180,9 @@ function updateH3Notes() {
     if (!profile) {
       note.textContent = "Cargando perfiles…";
     } else {
-      let desc = profile.note || "";
+      let desc = translateText(profile.note || "");
       if (profile.vram_hint) {
-        desc += ` · ${profile.vram_hint}`;
+        desc += ` · ${translateText(profile.vram_hint)}`;
       }
       note.textContent = desc;
     }
@@ -210,7 +211,7 @@ function updateH3Notes() {
     const found = list.find((item) => item.width === size.width && item.height === size.height);
     const vramHint = (found && found.vram_hint) || "12GB VRAM";
     if (sizeInfo) {
-      sizeInfo.textContent = `Resolución nativa: ${size.width}×${size.height} · ${vramHint}`;
+      sizeInfo.textContent = `${translateText(`Resolución nativa: ${size.width}×${size.height}`)} · ${translateText(vramHint)}`;
     }
     const isHighRes = found && ["fhd", "qhd", "2k"].includes(found.id);
     if (vramWarning) {
@@ -254,7 +255,7 @@ function updateH3Variants() {
   for (const variant of state.videoH3Variants || []) {
     if (allowed.includes(variant.id)) {
       variantSelect.appendChild(
-        option(variant.id, `Pasos: ${variant.steps} (${variant.label})`)
+        option(variant.id, translateText(`Pasos: ${variant.steps} (${variant.label})`))
       );
     }
   }
@@ -347,15 +348,15 @@ async function loadH3Profiles() {
   const profileSelect = $("video-h3-profile");
   profileSelect.replaceChildren();
   for (const profile of state.videoH3Profiles) {
-    let label = profile.label || profile.id;
+    let label = translateText(profile.label || profile.id);
     if (profile.available === false) {
       label = profile.id === "vdn"
-        ? "VDN (8-Pasos VDN · Requiere Pesos)"
-        : `${label} (No disponible)`;
+        ? translateText("VDN (8-Pasos VDN · Requiere Pesos)")
+        : `${label} ${translateText("(No disponible)")}`;
     }
     const opt = option(profile.id, label);
     if (profile.available === false) {
-      opt.title = profile.missing_reason || "Requiere pesos no instalados";
+      opt.title = translateText(profile.missing_reason || "Requiere pesos no instalados");
     }
     profileSelect.appendChild(opt);
   }

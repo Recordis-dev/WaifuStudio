@@ -5,7 +5,7 @@
 import { $, on } from "../dom.js";
 import { loadEditorGallery, loadEditorStatus } from "../tabs/editor.js";
 import { loadUpscaleGallery, applyUpscaleKind } from "../tabs/upscaler.js";
-import { applyLanguage } from "../i18n.js";
+import { applyLanguage, getCurrentLang, isSupportedLang } from "../i18n.js";
 
 const STORAGE_LANG_KEY = "waifu_lang";
 
@@ -78,7 +78,7 @@ export function initLanguageSelector() {
   const label = $("lang-current-label");
   if (!langBtn || !dropdown) return;
 
-  const currentLang = localStorage.getItem(STORAGE_LANG_KEY) || "es";
+  const currentLang = getCurrentLang();
   if (label) label.textContent = currentLang.toUpperCase();
 
   const options = dropdown.querySelectorAll(".lang-option");
@@ -86,7 +86,7 @@ export function initLanguageSelector() {
     opt.classList.toggle("active", opt.dataset.lang === currentLang);
     opt.addEventListener("click", (e) => {
       e.stopPropagation();
-      const lang = opt.dataset.lang || "es";
+      const lang = isSupportedLang(opt.dataset.lang) ? opt.dataset.lang : getCurrentLang();
       localStorage.setItem(STORAGE_LANG_KEY, lang);
       if (label) label.textContent = lang.toUpperCase();
       options.forEach((o) => o.classList.toggle("active", o === opt));
