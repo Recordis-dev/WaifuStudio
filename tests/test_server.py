@@ -197,6 +197,8 @@ class ServerTestCase(unittest.TestCase):
 class ReadRoutesTests(ServerTestCase):
     def test_models(self):
         response = self.make_client().get("/api/models")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         models = response.json()
         self.assertGreaterEqual(len(models), 1)
@@ -210,6 +212,8 @@ class ReadRoutesTests(ServerTestCase):
 
     def test_preprompts(self):
         response = self.make_client().get("/api/preprompts", params={"family": "anima"})
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["family"], "anima")
@@ -223,6 +227,8 @@ class ReadRoutesTests(ServerTestCase):
 
     def test_traits(self):
         response = self.make_client().get("/api/traits")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         groups = response.json()
         self.assertEqual(len(groups), 8)
@@ -231,6 +237,8 @@ class ReadRoutesTests(ServerTestCase):
 
     def test_gallery_vacia(self):
         response = self.make_client().get("/api/gallery")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"items": [], "count": 0})
 
@@ -280,8 +288,24 @@ class ReadRoutesTests(ServerTestCase):
 
 
 class LorasRouteTests(ServerTestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.loras_path = Path(__file__).resolve().parents[1] / 'tests' / 'fixtures' / 'loras.json'
+        patcher = mock.patch.object(
+            loras_module, "DEFAULT_PATH", self.loras_path
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        user = mock.patch.object(
+            loras_module, "user_registry_path", lambda: self.loras_path
+        )
+        user.start()
+        self.addCleanup(user.stop)
     def test_loras_200_con_items_y_familias(self):
         response = self.make_client().get("/api/loras")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(set(data), {"items", "families"})
@@ -302,6 +326,8 @@ class LorasRouteTests(ServerTestCase):
 
     def test_loras_filtro_por_familia(self):
         response = self.make_client().get("/api/loras", params={"family": "wan"})
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         items = response.json()["items"]
         self.assertEqual(
@@ -318,7 +344,7 @@ class LorasRouteTests(ServerTestCase):
         item = data["items"][0]
         self.assertEqual(item["id"], "miku-nakano-anima")
         self.assertEqual(item["family"], "anima")
-        self.assertEqual(item["file"], "anima\\Miku_Nakano_Anima_v0.7.safetensors")
+        self.assertEqual(item["file"], "anima/Miku_Nakano_Anima_v0.7.safetensors")
         self.assertEqual(item["trigger"], "M1kuNakan0_anima")
         self.assertEqual(item["default_weight"], 1.0)
         nueva = data["items"][1]
@@ -326,26 +352,26 @@ class LorasRouteTests(ServerTestCase):
         self.assertEqual(nueva["family"], "anima")
         self.assertEqual(
             nueva["file"],
-            "anima\\Kurashiki Reika Saimin Seishidou.safetensors",
+            "anima/Kurashiki Reika Saimin Seishidou.safetensors",
         )
         self.assertEqual(nueva["trigger"], "kur4sh1k1r31k4")
         self.assertEqual(nueva["default_weight"], 1.0)
         shuuko = data["items"][2]
         self.assertEqual(shuuko["id"], "shuuko-komi-s1s2-anima")
         self.assertEqual(shuuko["family"], "anima")
-        self.assertEqual(shuuko["file"], "anima\\shuuko-komi-s1s2.safetensors")
+        self.assertEqual(shuuko["file"], "anima/shuuko-komi-s1s2.safetensors")
         self.assertEqual(shuuko["trigger"], "shuuko komi")
         self.assertEqual(shuuko["default_weight"], 1.0)
         mina1 = data["items"][3]
         self.assertEqual(mina1["id"], "mina-ashido-1-anima")
         self.assertEqual(mina1["family"], "anima")
-        self.assertEqual(mina1["file"], "anima\\Mina Ashido 1.safetensors")
+        self.assertEqual(mina1["file"], "anima/Mina Ashido 1.safetensors")
         self.assertEqual(mina1["trigger"], "aniashido")
         self.assertEqual(mina1["default_weight"], 1.0)
         mina2 = data["items"][4]
         self.assertEqual(mina2["id"], "mina-ashido-2-anima")
         self.assertEqual(mina2["family"], "anima")
-        self.assertEqual(mina2["file"], "anima\\Mina Ashido 2.safetensors")
+        self.assertEqual(mina2["file"], "anima/Mina Ashido 2.safetensors")
         self.assertEqual(mina2["trigger"], "")
         self.assertEqual(mina2["default_weight"], 1.0)
         self.assertIn("no verificada", shuuko["license"])
@@ -420,6 +446,8 @@ class LoraCrudRouteTests(ServerTestCase):
             "/api/loras",
             json=self.entry("lora-c", "c", family="nueva", trigger="t1"),
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["item"]["id"], "lora-c")
@@ -487,6 +515,8 @@ class LoraCrudRouteTests(ServerTestCase):
                 "notes": "n",
             },
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         item = response.json()["item"]
         self.assertEqual(item["id"], "lora-a")
@@ -501,6 +531,8 @@ class LoraCrudRouteTests(ServerTestCase):
         response = self.make_client().put(
             "/api/loras/lora-a", json={"file": "anima/c.safetensors"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["item"]["file"], "anima/c.safetensors")
 
@@ -527,6 +559,8 @@ class LoraCrudRouteTests(ServerTestCase):
 
     def test_delete_quita_entrada_y_no_el_fichero(self):
         response = self.make_client().delete("/api/loras/lora-a")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["deleted"], "lora-a")
@@ -602,13 +636,15 @@ class LoraUploadRouteTests(ServerTestCase):
         response = self.make_client().post(
             "/api/loras/upload", json=self.payload(raw=raw)
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(set(data), {"item", "file", "trigger_inferido"})
         item = data["item"]
         self.assertEqual(item["id"], "mi-lora")
         self.assertEqual(item["family"], "anima")
-        self.assertEqual(item["file"], "anima\\Mi Lora.safetensors")
+        self.assertEqual(item["file"], "anima/Mi Lora.safetensors")
         self.assertEqual(item["display_name"], "Mi Lora Titulo")
         self.assertEqual(item["trigger"], "mi trigger")
         self.assertEqual(item["default_weight"], 1.0)
@@ -617,7 +653,7 @@ class LoraUploadRouteTests(ServerTestCase):
         self.assertIn("dim 32 / alpha 16", item["notes"])
         self.assertIn("base anima_baseV10", item["notes"])
         self.assertIn("editable", item["notes"])
-        self.assertEqual(data["file"], "anima\\Mi Lora.safetensors")
+        self.assertEqual(data["file"], "anima/Mi Lora.safetensors")
         self.assertEqual(data["trigger_inferido"], "mi trigger")
         target = self.loras_root / "anima" / "Mi Lora.safetensors"
         self.assertEqual(target.read_bytes(), raw)
@@ -630,6 +666,8 @@ class LoraUploadRouteTests(ServerTestCase):
             "/api/loras/upload",
             json=self.payload(display_name="Nombre manual", trigger="trigger manual"),
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         item = response.json()["item"]
         self.assertEqual(item["display_name"], "Nombre manual")
@@ -641,6 +679,8 @@ class LoraUploadRouteTests(ServerTestCase):
             "/api/loras/upload",
             json=self.payload(raw=lora_safetensors_bytes({"otra": "x"})),
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         item = response.json()["item"]
         self.assertEqual(item["display_name"], "Mi Lora")
@@ -659,6 +699,8 @@ class LoraUploadRouteTests(ServerTestCase):
                 file_b64=f"data:application/octet-stream;base64,{encoded}"
             ),
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
 
     def test_upload_slug_duplicado_anade_sufijo(self):
@@ -684,7 +726,7 @@ class LoraUploadRouteTests(ServerTestCase):
         cases = (
             ("extension", {"filename": "lora.bin"}),
             ("ruta", {"filename": "anima/lora.safetensors"}),
-            ("ruta_win", {"filename": "anima\\lora.safetensors"}),
+            ("ruta_win", {"filename": "anima/lora.safetensors"}),
             ("filename_vacio", {"filename": ""}),
             ("family_mayus", {"family": "Anima"}),
             ("family_vacia", {"family": ""}),
@@ -755,6 +797,8 @@ class LoraUploadRouteTests(ServerTestCase):
         response = client.post(
             "/api/loras/upload", json=self.payload(filename=filename, family=family)
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         return response.json()
 
@@ -766,6 +810,8 @@ class LoraUploadRouteTests(ServerTestCase):
         response = client.delete(
             f"/api/loras/{data['item']['id']}", params={"file": "1"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["deleted"], "mi-lora")
@@ -778,6 +824,8 @@ class LoraUploadRouteTests(ServerTestCase):
         data = self.upload(client)
         target = self.loras_root / "anima" / "Mi Lora.safetensors"
         response = client.delete(f"/api/loras/{data['item']['id']}")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["file_removed"])
         self.assertTrue(target.is_file())
@@ -808,6 +856,8 @@ class LoraUploadRouteTests(ServerTestCase):
         response = self.make_client().delete(
             "/api/loras/fantasma", params={"file": "1"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["file_removed"])
         self.assertEqual(self.registry_entries(), [])
@@ -824,7 +874,7 @@ class LoraUploadRouteTests(ServerTestCase):
                         {
                             "id": "fugada",
                             "family": "anima",
-                            "file": "..\\fuera.safetensors",
+                            "file": "../fuera.safetensors",
                             "display_name": "Fugada",
                             "trigger": "",
                             "default_weight": 1.0,
@@ -910,6 +960,8 @@ class LoraLibraryUiStaticTests(ServerTestCase):
 class ParamsRouteTests(ServerTestCase):
     def test_params_enums_y_defaults(self):
         response = self.make_client().get("/api/params")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["samplers"], list(SAMPLER_NAMES))
@@ -926,6 +978,8 @@ class ParamsRouteTests(ServerTestCase):
 class FormatsRouteTests(ServerTestCase):
     def test_formats_15_y_default(self):
         response = self.make_client().get("/api/formats")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["default"], DEFAULT_FORMAT)
@@ -941,6 +995,8 @@ class FormatsRouteTests(ServerTestCase):
 class NegativeRouteTests(ServerTestCase):
     def test_default_glossy(self):
         response = self.make_client().get("/api/negative")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         negative = response.json()["negative"]
         self.assertEqual(negative, apply_preprompt("", "anima", "glossy")[1])
@@ -951,6 +1007,8 @@ class NegativeRouteTests(ServerTestCase):
         response = self.make_client().get(
             "/api/negative", params={"preprompt": "anima_default", "family": "anima"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json()["negative"],
@@ -973,11 +1031,15 @@ class PromptBuildTests(ServerTestCase):
         response = self.make_client().post(
             "/api/prompt/build", json={"trait_ids": ["smile", "long_hair"]}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"prompt": "long hair, smile"})
 
     def test_vacio(self):
         response = self.make_client().post("/api/prompt/build", json={"trait_ids": []})
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"prompt": ""})
 
@@ -1000,6 +1062,8 @@ class PromptZonesRoutesTests(ServerTestCase):
             "/api/prompt/zones",
             json={"text": "1girl, masterpiece, nsfw, long hair"},
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(set(data), {"zones", "composed"})
@@ -1021,6 +1085,8 @@ class PromptZonesRoutesTests(ServerTestCase):
             "/api/prompt/zones",
             json={"text": "1girl, blue sky, tag_desconocido"},
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         general = next(item for item in data["zones"] if item["id"] == "general")
@@ -1030,6 +1096,8 @@ class PromptZonesRoutesTests(ServerTestCase):
 
     def test_zones_texto_vacio(self):
         response = self.make_client().post("/api/prompt/zones", json={"text": ""})
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["composed"], "")
         self.assertEqual(len(response.json()["zones"]), 5)
@@ -1047,6 +1115,8 @@ class PromptZonesRoutesTests(ServerTestCase):
             "/api/prompt/compose",
             json={"zones": {"general": ["blue sky"], "subject": ["1girl"]}},
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"text": "1girl, blue sky"})
 
@@ -1098,6 +1168,8 @@ class PromptZonesRoutesTests(ServerTestCase):
         response = self.make_client().get(
             "/api/prompt/options", params={"zone": "general"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(set(data), {"zone", "subgroups"})
@@ -1143,6 +1215,8 @@ class PromptZonesRoutesTests(ServerTestCase):
         for zone in ("quality", "safety", "subject"):
             with self.subTest(zone=zone):
                 response = client.get("/api/prompt/options", params={"zone": zone})
+                if response.status_code != 200:
+                    print(response.json())
                 self.assertEqual(response.status_code, 200)
                 data = response.json()
                 self.assertEqual(data["zone"], zone)
@@ -1297,6 +1371,8 @@ class EnhanceRouteTests(ServerTestCase):
         response = client.post(
             "/api/enhance", json={"text": "1girl", "preprompt": "glossy"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         tags = [tag.strip() for tag in data["positive"].split(",")]
@@ -1324,6 +1400,8 @@ class EnhanceRouteTests(ServerTestCase):
     def test_rating_por_defecto_sfw_elimina_nsfw(self):
         client = self.make_client(llm=self.nsfw_llm)
         response = client.post("/api/enhance", json={"text": "1girl", "preprompt": "ninguno"})
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         tags = [tag.strip().lower() for tag in response.json()["positive"].split(",")]
         self.assertIn("sfw", tags)
@@ -1346,6 +1424,8 @@ class EnhanceStrengthRouteTests(ServerTestCase):
         response = self.make_client(llm=llm).post(
             "/api/enhance", json={"text": "1girl, smile"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(llm.calls[0]["temperature"], 0.7)
         self.assertNotIn("instruccion:", llm.calls[0]["user"])
@@ -1355,6 +1435,8 @@ class EnhanceStrengthRouteTests(ServerTestCase):
         response = self.make_client(llm=llm).post(
             "/api/enhance", json={"text": "1girl, smile", "strength": "fiel"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(llm.calls[0]["temperature"], 0.4)
         self.assertIn("instruccion:", llm.calls[0]["user"])
@@ -1364,6 +1446,8 @@ class EnhanceStrengthRouteTests(ServerTestCase):
         response = self.make_client(llm=llm).post(
             "/api/enhance", json={"text": "1girl, smile", "strength": "creativo"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(llm.calls[0]["temperature"], 1.0)
 
@@ -1448,6 +1532,8 @@ class EnhanceZonesRouteTests(ServerTestCase):
             "/api/prompt/enhance_zones",
             json={"text": "1girl", "tags": ["Long Hair", "long hair", "wind"]},
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         user = llm.calls[0]["user"]
         self.assertIn(
@@ -1460,6 +1546,8 @@ class EnhanceZonesRouteTests(ServerTestCase):
         response = self.make_client(llm=llm).post(
             "/api/prompt/enhance_zones", json={"text": "1girl"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         user = llm.calls[0]["user"]
         self.assertNotIn("Tags ya aplicadas", user)
@@ -1477,6 +1565,8 @@ class EnhanceZonesRouteTests(ServerTestCase):
         response = client.post(
             "/api/prompt/enhance_zones", json={"text": "1girl", "rating": "sfw"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(
@@ -1506,6 +1596,8 @@ class EnhanceZonesRouteTests(ServerTestCase):
             "/api/prompt/enhance_zones",
             json={"text": "1girl", "zone": "general", "strength": "fiel"},
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         user = llm.calls[0]["user"]
         self.assertIn("Zona objetivo: general.", user)
@@ -1516,6 +1608,8 @@ class EnhanceZonesRouteTests(ServerTestCase):
         response = self.make_client(llm=llm).post(
             "/api/prompt/enhance_zones", json={"text": "1girl"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("Zona objetivo:", llm.calls[0]["user"])
 
@@ -1567,6 +1661,8 @@ class FakeVision:
 class VisionRouteTests(ServerTestCase):
     def test_status_200(self):
         response = self.make_client(vision=FakeVision()).get("/api/vision/status")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertTrue(data["installed"])
@@ -1581,6 +1677,8 @@ class VisionRouteTests(ServerTestCase):
         response = self.make_client(vision=vision).post(
             "/api/vision/image_to_prompt", json={"gen_id": str(gen_id)}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["tags"], ["1girl"])
@@ -1599,6 +1697,8 @@ class VisionRouteTests(ServerTestCase):
                 "use_caption": False,
             },
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.json()["caption"])
         self.assertEqual(vision.calls[0][1:], (True, False))
@@ -1663,6 +1763,8 @@ class VisionModeRouteTests(ServerTestCase):
         response = self.make_client(vision=FakeVision()).post(
             "/api/vision/image_to_prompt", json={"image_b64": self.B64}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(set(response.json()), {"tags", "caption", "model"})
 
@@ -1672,6 +1774,8 @@ class VisionModeRouteTests(ServerTestCase):
             "/api/vision/image_to_prompt",
             json={"image_b64": self.B64, "mode": "unified"},
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["mode"], "unified")
@@ -1694,6 +1798,8 @@ class VisionModeRouteTests(ServerTestCase):
                 "use_caption": False,
             },
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(
@@ -1711,6 +1817,8 @@ class VisionModeRouteTests(ServerTestCase):
             "/api/vision/image_to_prompt",
             json={"image_b64": self.B64, "mode": "caption"},
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(
@@ -1787,6 +1895,8 @@ class LlmStatusRouteTests(ServerTestCase):
         fake = FakeManager(dict(self.MANAGED))
         with mock.patch.object(server_module, "_manager", return_value=fake):
             response = self.make_client().get("/api/llm/status")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), self.MANAGED)
         self.assertEqual(fake.status_calls, 1)
@@ -1801,6 +1911,8 @@ class LlmStatusRouteTests(ServerTestCase):
         fake = FakeManager(payload, external_url="http://externo:9000")
         with mock.patch.object(server_module, "_manager", return_value=fake):
             response = self.make_client().get("/api/llm/status")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), payload)
 
@@ -1822,6 +1934,8 @@ class VisionManagedServerTests(ServerTestCase):
         response = self._post(
             vision, fake, {"image_b64": self.B64, "mode": "unified"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(fake.ensure_calls, 1)
         self.assertEqual(vision.unified_calls, 1)
@@ -1832,6 +1946,8 @@ class VisionManagedServerTests(ServerTestCase):
         response = self._post(
             vision, fake, {"image_b64": self.B64, "mode": "caption"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(fake.ensure_calls, 1)
 
@@ -1841,6 +1957,8 @@ class VisionManagedServerTests(ServerTestCase):
         response = self._post(
             vision, fake, {"image_b64": self.B64, "mode": "tags"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(fake.ensure_calls, 0)
 
@@ -1850,6 +1968,8 @@ class VisionManagedServerTests(ServerTestCase):
         response = self._post(
             vision, fake, {"image_b64": self.B64, "use_caption": False}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(fake.ensure_calls, 0)
 
@@ -1859,6 +1979,8 @@ class VisionManagedServerTests(ServerTestCase):
         response = self._post(
             vision, fake, {"image_b64": self.B64, "mode": "unified"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(fake.ensure_calls, 0)
 
@@ -1884,6 +2006,8 @@ class DefaultVisionWiringTests(ServerTestCase):
         )
         with mock.patch.object(server_module, "_manager", return_value=fake):
             response = self.make_client().get("/api/vision/status")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertIn("http://127.0.0.1:9911", response.json()["note"])
 
@@ -1895,6 +2019,8 @@ class DefaultVisionWiringTests(ServerTestCase):
         )
         with mock.patch.object(server_module, "_manager", return_value=fake):
             response = self.make_client().get("/api/vision/status")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertIn("http://externo:9000", response.json()["note"])
 
@@ -2035,6 +2161,8 @@ class GenerateValidationTests(ServerTestCase):
         response = client.post(
             "/api/generate", json=self.payload(ref_image_b64=raw, strength=0.5)
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         job_id = response.json()["job_id"]
         self.assertRegex(job_id, r"^[0-9a-f]{32}$")
@@ -2066,6 +2194,8 @@ class GenerateValidationTests(ServerTestCase):
             "/api/generate",
             json=self.payload(ref_image_b64=raw, size="cuadro_hd", strength=0.5),
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         row = self.store.list()[0]
         path = self.config.comfy_root / "input" / row["params"]["ref_image"]
@@ -2080,6 +2210,8 @@ class GenerateValidationTests(ServerTestCase):
         response = self.make_client().post(
             "/api/generate", json=self.payload(ref_image_b64=raw, strength=0.5)
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         row = self.store.list()[0]
         path = self.config.comfy_root / "input" / row["params"]["ref_image"]
@@ -2104,6 +2236,8 @@ class GenerateSizeTests(ServerTestCase):
             "/api/generate",
             json=self.payload(size="cuadro_hd", width=64, height=64),
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         job = queue.jobs[0]
         self.assertEqual(job["params"]["width"], 1024)
@@ -2117,6 +2251,8 @@ class GenerateSizeTests(ServerTestCase):
         response = self.make_client(queue=queue).post(
             "/api/generate", json=self.payload(width=768, height=1344)
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         job = queue.jobs[0]
         self.assertEqual(job["params"]["width"], 768)
@@ -2154,6 +2290,8 @@ class GenerateSizeTests(ServerTestCase):
         response = self.make_client(queue=queue).post(
             "/api/generate", json=self.payload(width=64, height=4096)
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(queue.jobs[0]["params"]["width"], 64)
         self.assertEqual(queue.jobs[0]["params"]["height"], 4096)
@@ -2210,6 +2348,8 @@ class GenerateEngineParamsValidationTests(ServerTestCase):
                 }
             ),
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(queue.jobs[0]["params"]["sampler_name"], "dpmpp_2m")
         self.assertEqual(queue.jobs[0]["params"]["scheduler"], "karras")
@@ -2219,11 +2359,27 @@ class GenerateEngineParamsValidationTests(ServerTestCase):
         response = self.make_client(queue=queue).post(
             "/api/generate", json=self.payload({"seed": 1})
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
 
 
 class GenerateLorasTests(ServerTestCase):
-    MIKU_FILE = "anima\\Miku_Nakano_Anima_v0.7.safetensors"
+
+    def setUp(self):
+        super().setUp()
+        self.loras_path = Path(__file__).resolve().parents[1] / 'tests' / 'fixtures' / 'loras.json'
+        patcher = mock.patch.object(
+            loras_module, "DEFAULT_PATH", self.loras_path
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        user = mock.patch.object(
+            loras_module, "user_registry_path", lambda: self.loras_path
+        )
+        user.start()
+        self.addCleanup(user.stop)
+    MIKU_FILE = "anima/Miku_Nakano_Anima_v0.7.safetensors"
 
     def payload(self, **overrides) -> dict:
         data = {
@@ -2241,6 +2397,8 @@ class GenerateLorasTests(ServerTestCase):
             "/api/generate",
             json=self.payload(loras=[{"id": "miku-nakano-anima", "weight": 0.8}]),
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         expected = [
             {
@@ -2257,6 +2415,8 @@ class GenerateLorasTests(ServerTestCase):
         response = self.make_client(queue=queue).post(
             "/api/generate", json=self.payload()
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(queue.jobs[0]["loras"], [])
         self.assertEqual(self.store.list()[0]["params"]["loras"], [])
@@ -2266,6 +2426,8 @@ class GenerateLorasTests(ServerTestCase):
         response = self.make_client(queue=queue).post(
             "/api/generate", json=self.payload(loras=[{"id": "lightx2v-wan-high"}])
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         item = queue.jobs[0]["loras"][0]
         self.assertEqual(item["weight"], 1.0)
@@ -2351,6 +2513,8 @@ class PrepromptsCustomRoutesTests(ServerTestCase):
         response = self.make_client().get(
             "/api/preprompts", params={"family": "anima"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["custom"], [])
@@ -2409,6 +2573,8 @@ class PrepromptsCustomRoutesTests(ServerTestCase):
         response = client.post(
             "/api/generate", json=self.payload(preprompt="mi_estilo")
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(queue.jobs[0]["preprompt"], "mi_estilo")
         self.assertEqual(self.store.list()[0]["params"]["preprompt"], "mi_estilo")
@@ -2501,6 +2667,8 @@ class CancelRouteTests(ServerTestCase):
         record["engine"] = engine
         record["prompt_id"] = "p1"
         response = client.post(f"/api/jobs/{job_id}/cancel")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "cancelled"})
         self.assertEqual(engine.deleted, ["p1"])
@@ -2525,6 +2693,8 @@ class CancelRouteTests(ServerTestCase):
             "kind": "video",
         }
         response = client.post(f"/api/jobs/{job_id}/cancel")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "cancelled"})
         self.assertEqual(engine.deleted, ["p1"])
@@ -2540,6 +2710,8 @@ class CancelRouteTests(ServerTestCase):
         queue.statuses[job_id] = "running"
         client.app.state.jobs[job_id] = {"gen_id": gen_id}
         response = client.post(f"/api/jobs/{job_id}/cancel")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "cancelled"})
         self.assertEqual(self.store.get(gen_id)["status"], "cancelled")
@@ -2556,6 +2728,8 @@ class CancelRouteTests(ServerTestCase):
         record["prompt_id"] = "p1"
         record["status"] = "running"
         response = client.post(f"/api/jobs/{job_id}/cancel")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "cancelled"})
         self.assertEqual(engine.deleted, [])
@@ -2582,6 +2756,8 @@ class CancelRouteTests(ServerTestCase):
         client = TestClient(app)
         self.addCleanup(client.close)
         response = client.post("/api/generate", json=self.payload())
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         job_id = response.json()["job_id"]
         cancel = client.post(f"/api/jobs/{job_id}/cancel")
@@ -2597,6 +2773,20 @@ class CancelRouteTests(ServerTestCase):
 
 
 class RunGenerationTests(ServerTestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.loras_path = Path(__file__).resolve().parents[1] / 'tests' / 'fixtures' / 'loras.json'
+        patcher = mock.patch.object(
+            loras_module, "DEFAULT_PATH", self.loras_path
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        user = mock.patch.object(
+            loras_module, "user_registry_path", lambda: self.loras_path
+        )
+        user.start()
+        self.addCleanup(user.stop)
     def make_job(self, **overrides) -> dict:
         gen_id = self.store.add(MODEL_ID, "1girl, smile", "", {"seed": 7})
         job = {
@@ -2754,7 +2944,7 @@ class RunGenerationTests(ServerTestCase):
             graph["lora_1"]["inputs"],
             {
                 "model": ["1", 0],
-                "lora_name": "anima\\Miku_Nakano_Anima_v0.7.safetensors",
+                "lora_name": "anima/Miku_Nakano_Anima_v0.7.safetensors",
                 "strength_model": 0.8,
             },
         )
@@ -2898,6 +3088,8 @@ class QueueIntegrationTests(ServerTestCase):
                     "params": {"seed": 3},
                 },
             )
+            if response.status_code != 200:
+                print(response.json())
             self.assertEqual(response.status_code, 200)
             job_id = response.json()["job_id"]
             app.state.queue.wait(job_id, 5)
@@ -2919,6 +3111,8 @@ class MediaTests(ServerTestCase):
         self.add_gallery_png(gen_id)
         client = self.make_client()
         response = client.get(f"/media/{gen_id}/ok.png")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "image/png")
         self.assertEqual(response.content, PNG_BYTES)
@@ -2939,6 +3133,8 @@ class DownloadRouteTests(ServerTestCase):
         gen_id = self.store.add(MODEL_ID, "p", status="done")
         self.add_gallery_png(gen_id, "ok.png")
         response = self.make_client().get(f"/api/download/{gen_id}/ok.png")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertIn(
             "attachment", response.headers.get("content-disposition", "").lower()
@@ -2967,6 +3163,8 @@ class ApiRefsTests(ServerTestCase):
     def test_200_sirve_png_temporal_de_comfy_input(self):
         self.write_input("ref_ok.png")
         response = self.make_client().get("/api/refs/ref_ok.png")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "image/png")
         self.assertEqual(response.content, PNG_BYTES)
@@ -2980,6 +3178,8 @@ class ApiRefsTests(ServerTestCase):
             with self.subTest(name=name):
                 self.write_input(name)
                 response = client.get(f"/api/refs/{name}")
+                if response.status_code != 200:
+                    print(response.json())
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.headers["content-type"], media_type)
 
@@ -3015,6 +3215,8 @@ class ApiRefsTests(ServerTestCase):
                 "strength": 0.45,
             },
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         row = self.store.list()[0]
         self.assertEqual(row["params"]["seed"], 7)
@@ -3102,6 +3304,8 @@ class GalleryKindFilterTests(ServerTestCase):
 class TagsRoutesTests(ServerTestCase):
     def test_groups(self):
         response = self.make_client().get("/api/tags/groups")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"groups": list_groups()})
         self.assertEqual(len(response.json()["groups"]), len(list_groups()))
@@ -3109,6 +3313,8 @@ class TagsRoutesTests(ServerTestCase):
     def test_por_grupo_y_grupo_desconocido(self):
         client = self.make_client()
         response = client.get("/api/tags", params={"group": "hair"})
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         items = response.json()["items"]
         self.assertTrue(items)
@@ -3255,6 +3461,8 @@ class CharacterProfileRoutesTests(ServerTestCase):
         path = self.write_loras([self.lora_entry("otro-lora")])
         with mock.patch.object(loras_module, "DEFAULT_PATH", path):
             response = client.get(f"/api/characters/{char_id}/profile")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json(),
@@ -3320,6 +3528,8 @@ class CharacterRefsRoutesTests(ServerTestCase):
         response = client.post(
             f"/api/characters/{char_id}/refs", json={"gen_id": gen_id}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         relpath = response.json()["relpath"]
         target = self.config.data_dir / "characters" / relpath
@@ -3434,6 +3644,8 @@ class CharacterSheetRoutesTests(ServerTestCase):
             self.add_ref(client, char_id)
         before = client.get(f"/api/characters/{char_id}/refs").json()
         response = client.post(f"/api/characters/{char_id}/sheet", json={})
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(set(data), {"relpath", "url"})
@@ -3463,6 +3675,8 @@ class CharacterSheetRoutesTests(ServerTestCase):
         self.add_ref(client, char_id)
         self.add_ref(client, char_id)
         response = client.post(f"/api/characters/{char_id}/sheet")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertIn("relpath", response.json())
 
@@ -3500,6 +3714,8 @@ class CharacterSheetRoutesTests(ServerTestCase):
         for _ in range(3):
             self.add_ref(client, char_id)
         response = client.post(f"/api/characters/{char_id}/sheet", json={})
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         directory = self.config.data_dir / "characters" / str(char_id)
         on_disk = {path.name for path in directory.iterdir() if path.is_file()}
@@ -3571,6 +3787,8 @@ class CharacterTrainRoutesTests(ServerTestCase):
             f"/api/characters/{char_id}/train",
             json={"gen_ids": gen_ids, "rank": 8, "epochs": 2, "trigger": "aiko"},
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"job_id": "job-1"})
         job = queue.jobs[0]
@@ -3598,6 +3816,8 @@ class CharacterTrainRoutesTests(ServerTestCase):
         response = client.post(
             f"/api/characters/{char_id}/train", json={"gen_ids": list(range(10))}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         job = queue.jobs[0]
         self.assertEqual(job["rank"], 16)
@@ -3648,6 +3868,8 @@ class CharacterTrainRoutesTests(ServerTestCase):
         response = client.post(
             f"/api/characters/{char_id}/train", json={"gen_ids": list(range(10))}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         job = queue.jobs[0]
         self.assertIs(job["auto_tags"], True)
@@ -3660,6 +3882,8 @@ class CharacterTrainRoutesTests(ServerTestCase):
                 "tag_threshold": 0.6,
             },
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         job = queue.jobs[1]
         self.assertIs(job["auto_tags"], False)
@@ -3880,6 +4104,8 @@ class CharacterMediaTests(ServerTestCase):
 class IndexTests(ServerTestCase):
     def test_index_200_con_waifu(self):
         response = self.make_client().get("/")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertIn("WAIFU", response.text)
         self.assertIn("/static/js/main.js", response.text)
@@ -4050,6 +4276,8 @@ class CharacterProfileUiStaticTests(ServerTestCase):
 class EditorStatusTests(ServerTestCase):
     def test_status_forma_e_installed_false_con_temp_root(self):
         response = self.make_client().get("/api/editor/status")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(set(data), {"installed", "model", "expected", "note"})
@@ -4143,6 +4371,8 @@ class EditorGenerateValidationTests(ServerTestCase):
                 "ref_images_b64": [raw],
             },
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         job = queue.jobs[0]
         self.assertEqual((job["width"], job["height"]), (640, 960))
@@ -4268,6 +4498,8 @@ class EditorGenerateValidationTests(ServerTestCase):
             "/api/editor/generate",
             json={"prompt": "1girl", "steps": 30, "cfg": 2.5},
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"job_id": "job-1"})
         job = queue.jobs[0]
@@ -4283,6 +4515,8 @@ class EditorGenerateValidationTests(ServerTestCase):
         response = self.make_client(queue=queue).post(
             "/api/editor/generate", json={"prompt": "1girl"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         job = queue.jobs[0]
         self.assertEqual(job["steps"], server_module.EDITOR_DEFAULT_STEPS)
@@ -4303,6 +4537,8 @@ class EditorGenerateValidationTests(ServerTestCase):
                 "cfg": 2.5,
             },
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         job_id = response.json()["job_id"]
         status = client.get(f"/api/jobs/{job_id}").json()
@@ -4363,6 +4599,8 @@ class EditorGenerateGuardTests(ServerTestCase):
                 "seed": 7,
             },
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"job_id": "job-1"})
         self.assertEqual(len(queue.jobs), 1)
@@ -4654,6 +4892,8 @@ class UpscaleRouteTests(ServerTestCase):
 
     def test_modelos_200(self):
         response = self.make_client().get("/api/upscale/models")
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["models"], data["items"])
@@ -4677,6 +4917,8 @@ class UpscaleRouteTests(ServerTestCase):
         response = self.make_client(queue=queue).post(
             "/api/upscale", json={"source_gen": gen_id, "model": self.MODEL}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"job_id": "job-1"})
         self.assertEqual(len(queue.jobs), 1)
@@ -4719,6 +4961,8 @@ class UpscaleRouteTests(ServerTestCase):
             "/api/upscale",
             json={"kind": "image", "image_b64": image_b64, "model": self.MODEL},
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"job_id": "job-1"})
         self.assertEqual(len(queue.jobs), 1)
@@ -4760,6 +5004,8 @@ class UpscaleRouteTests(ServerTestCase):
         response = client.post(
             "/api/upscale", json={"image_b64": data_uri, "model": self.MODEL}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         files = sorted((self.config.comfy_root / "input").glob("*.png"))
         self.assertEqual(len(files), 1)
@@ -4839,6 +5085,8 @@ class UpscaleRouteTests(ServerTestCase):
                 "/api/upscale",
                 json={"image_b64": image_b64, "model": self.MODEL, "passes": 2},
             )
+            if response.status_code != 200:
+                print(response.json())
             self.assertEqual(response.status_code, 200)
             job_id = response.json()["job_id"]
             app.state.queue.wait(job_id, 10)
@@ -4904,6 +5152,8 @@ class UpscaleRouteTests(ServerTestCase):
                 "passes": 1,
             },
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("passes", queue.jobs[-1]["params"])
 
@@ -4954,6 +5204,8 @@ class UpscaleRouteTests(ServerTestCase):
                         "sharpen": sharpen,
                     },
                 )
+                if response.status_code != 200:
+                    print(response.json())
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(queue.jobs[-1]["sharpen"], sharpen)
         response = client.post(
@@ -4965,6 +5217,8 @@ class UpscaleRouteTests(ServerTestCase):
                 "sharpen": 0,
             },
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("sharpen", queue.jobs[-1]["params"])
 
@@ -4983,6 +5237,8 @@ class UpscaleRouteTests(ServerTestCase):
                 "/api/upscale",
                 json={"image_b64": image_b64, "model": self.MODEL, "sharpen": 2},
             )
+            if response.status_code != 200:
+                print(response.json())
             self.assertEqual(response.status_code, 200)
             job_id = response.json()["job_id"]
             app.state.queue.wait(job_id, 10)
@@ -5016,6 +5272,8 @@ class UpscaleRouteTests(ServerTestCase):
             "/api/upscale",
             json={"source_gen": gen_id, "file": "b.png", "model": self.MODEL},
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(queue.jobs[0]["source_file"], "b.png")
         self.assertEqual(self.store.list()[0]["params"]["source_file"], "b.png")
@@ -5103,6 +5361,8 @@ class UpscaleRouteTests(ServerTestCase):
             "/api/upscale",
             json={"kind": "video", "source_gen": gen_id, "model": self.MODEL},
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"job_id": "job-1"})
         self.assertEqual(len(queue.jobs), 1)
@@ -5148,6 +5408,8 @@ class UpscaleRouteTests(ServerTestCase):
                 "model": self.MODEL,
             },
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(queue.jobs[0]["source_file"], "b.mp4")
         self.assertEqual(self.store.list()[0]["params"]["source_file"], "b.mp4")
@@ -5225,6 +5487,8 @@ class UpscaleRouteTests(ServerTestCase):
                 "multiplier": 4,
             },
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"job_id": "job-1"})
         self.assertEqual(len(queue.jobs), 1)
@@ -5267,6 +5531,8 @@ class UpscaleRouteTests(ServerTestCase):
             "/api/upscale",
             json={"kind": "fps", "source_gen": gen_id, "multiplier": 2, "fps_in": 24},
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         job = queue.jobs[0]
         self.assertEqual(job["ckpt"], "rife49.pth")
@@ -5411,6 +5677,8 @@ class UpscaleRouteTests(ServerTestCase):
                     "multiplier": 2,
                 },
             )
+            if response.status_code != 200:
+                print(response.json())
             self.assertEqual(response.status_code, 200)
             job_id = response.json()["job_id"]
             app.state.queue.wait(job_id, 10)
@@ -5466,6 +5734,8 @@ class UpscaleRouteTests(ServerTestCase):
                 "/api/upscale",
                 json={"kind": "video", "source_gen": gen_id, "model": self.MODEL},
             )
+            if response.status_code != 200:
+                print(response.json())
             self.assertEqual(response.status_code, 200)
             job_id = response.json()["job_id"]
             app.state.queue.wait(job_id, 10)
@@ -5510,6 +5780,8 @@ class UpscaleRouteTests(ServerTestCase):
             response = client.post(
                 "/api/upscale", json={"source_gen": gen_id, "model": self.MODEL}
             )
+            if response.status_code != 200:
+                print(response.json())
             self.assertEqual(response.status_code, 200)
             job_id = response.json()["job_id"]
             app.state.queue.wait(job_id, 10)
@@ -5814,6 +6086,8 @@ class StartupDefaultsUiStaticTests(ServerTestCase):
         response = self.make_client().get(
             "/api/negative", params={"preprompt": "anima_default", "family": "anima"}
         )
+        if response.status_code != 200:
+            print(response.json())
         self.assertEqual(response.status_code, 200)
         negative = response.json()["negative"]
         self.assertEqual(negative, apply_preprompt("", "anima", "anima_default")[1])

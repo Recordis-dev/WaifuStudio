@@ -4,8 +4,8 @@ Pipeline CPU/testeable sin GPU ni red: `prepare_dataset` copia imagenes de la
 galeria con sus captions (y, con `tagger`, tags WD14 auto-captionados),
 `write_config` escribe el TOML del entrenador, `run_training` lanza el comando
 externo (`WAIFU_TRAINER_CMD`) volcando el log y `register_lora` copia el
-`.safetensors` a `ComfyUI\\models\\loras\\waifu` y lo registra en
-`registry\\loras.json`. El entrenador real vive en `tools/kohya` (checkout de
+`.safetensors` a `ComfyUI/models/loras/waifu` y lo registra en
+`registry/loras.json`. El entrenador real vive en `tools/kohya` (checkout de
 `kohya-ss/sd-scripts` v0.12.0 con `networks.lora_anima`, venv propio y wrapper
 `run_waifu_train.py` que consume este TOML); aqui solo se orquesta (el servidor
 encola `kind="train"`).
@@ -347,9 +347,8 @@ def _trainer_command(cmd: list[str] | None, env: dict | None) -> list[str]:
     text = text.strip() if isinstance(text, str) else ""
     if not text:
         raise EngineError("entrenador no instalado (M10)")
-    return text.split()
-
-
+    import shlex
+    return shlex.split(text)
 def _pump(stream: Any, handle: Any) -> None:
     """Vuelca el stream al log en streaming (si hay handle) y lo cierra."""
     try:

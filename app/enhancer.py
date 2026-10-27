@@ -6,7 +6,7 @@ tests; `load_server_llm` habla con un `llama-server` OpenAI-compatible y su
 transporte es inyectable (`_http_transport` es el unico camino que abre
 sockets). El SYS_PROMPT y `BASE_NEGATIVE` (negativo base: calidad + anti-menores +
 anti-censura) son copias EXACTAS del planner legacy certificado (retirado el
-2026-09-26; archivado en ``data\\gates\\m10\\evidencia-legacy``, fuera de git);
+2026-09-26; archivado en ``data/gates/m10/evidencia-legacy``, fuera de git);
 el RAG y el manual salen de las mismas fuentes (``docs/prompting_anima.md``). El negativo final es
 SIEMPRE `BASE_NEGATIVE` + negativo del preprompt, con dedup case-insensitive.
 """

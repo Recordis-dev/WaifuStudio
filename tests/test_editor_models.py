@@ -84,7 +84,7 @@ class EditorCatalogValidationTests(unittest.TestCase):
 
     def test_archivo_fuera_de_models(self):
         for file in (
-            "C:/modelos/a.gguf",
+            "/modelos/a.gguf",
             "/unet/a.gguf",
             "../a.gguf",
             "unet/../../a.gguf",

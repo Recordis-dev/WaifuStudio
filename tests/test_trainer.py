@@ -378,7 +378,7 @@ class RunTrainingTests(TrainerTestCase):
         log = self.root / "logs" / "train.log"
         code = run_training(
             self.config_path,
-            cmd=["cmd", "/c", "echo", "hola"],
+            cmd=["sh", "-c", "echo hola"],
             log_path=log,
             timeout_s=30,
         )
@@ -388,10 +388,10 @@ class RunTrainingTests(TrainerTestCase):
     def test_log_en_append(self):
         log = self.root / "train.log"
         run_training(
-            self.config_path, cmd=["cmd", "/c", "echo", "hola"], log_path=log, timeout_s=30
+            self.config_path, cmd=["sh", "-c", "echo hola"], log_path=log, timeout_s=30
         )
         run_training(
-            self.config_path, cmd=["cmd", "/c", "echo", "hola"], log_path=log, timeout_s=30
+            self.config_path, cmd=["sh", "-c", "echo hola"], log_path=log, timeout_s=30
         )
         self.assertEqual(log.read_text(encoding="utf-8").lower().count("hola"), 2)
 
@@ -399,7 +399,7 @@ class RunTrainingTests(TrainerTestCase):
         log = self.root / "train.log"
         code = run_training(
             self.config_path,
-            env={TRAINER_CMD_ENV: "cmd /c echo env"},
+            env={TRAINER_CMD_ENV: 'sh -c "echo env"'},
             log_path=log,
             timeout_s=30,
         )
