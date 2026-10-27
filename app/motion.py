@@ -5,7 +5,7 @@ Reimplementación del planner de motion legacy con el LLM INYECTADO
 se reutiliza de `app.enhancer.load_local_llm` y jamás se ejecuta en tests.
 `SYS_PROMPT_MOTION` y `MOTION_NEGATIVE` son copias EXACTAS del legacy
 certificado (retirado el 2026-09-26; archivado en
-``data\\gates\\m10\\evidencia-legacy\\motion.py``, fuera de git); el negativo es
+``data/gates/m10/evidencia-legacy\\motion.py``, fuera de git); el negativo es
 determinista y el LLM solo escribe el positivo.
 """
 

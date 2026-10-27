@@ -236,7 +236,7 @@ def scan_disk_models(cfg: Any, registry: ModelRegistry | None = None) -> list[di
         return []
 
     known_unets = {
-        entry.profile.unet_name.replace("/", "\\").lower()
+        entry.profile.unet_name.lower()
         for entry in registry.models
     }
     known_ids = {entry.id for entry in registry.models}
@@ -255,8 +255,8 @@ def scan_disk_models(cfg: Any, registry: ModelRegistry | None = None) -> list[di
                 candidates.append((p, ckpt_dir, "checkpoint"))
 
     for path, base_dir, kind in candidates:
-        rel_name = str(path.relative_to(base_dir)).replace("\\", "/")
-        if rel_name.replace("/", "\\").lower() in known_unets:
+        rel_name = str(path.relative_to(base_dir))
+        if rel_name.lower() in known_unets:
             continue
         base_id = _lora_slug(path.stem)
         model_id = base_id
@@ -314,7 +314,7 @@ def scan_disk_models(cfg: Any, registry: ModelRegistry | None = None) -> list[di
         )
         registry.add(entry)
         known_ids.add(model_id)
-        known_unets.add(rel_name.replace("/", "\\").lower())
+        known_unets.add(rel_name.lower())
         added.append(entry)
 
     # Auto-corregir familia de modelos checkpoint existentes si estaban marcados como anima
@@ -410,7 +410,7 @@ def scan_disk_loras(comfy_root: Any) -> list[dict]:
 
     existing = list_loras()
     file_to_entry = {
-        item["file"].replace("/", "\\").lower(): item for item in existing
+        item["file"].lower(): item for item in existing
     }
     known_files = set(file_to_entry.keys())
     known_ids = {item["id"] for item in existing}
@@ -418,7 +418,7 @@ def scan_disk_loras(comfy_root: Any) -> list[dict]:
 
     for path in sorted(loras_dir.rglob("*.safetensors")):
         rel_path = path.relative_to(loras_dir)
-        rel_str = str(rel_path).replace("/", "\\")
+        rel_str = str(rel_path)
         kind, raw_header = classify_safetensors_file(path)
         if kind != "lora":
             continue
@@ -457,7 +457,7 @@ def scan_disk_loras(comfy_root: Any) -> list[dict]:
             "display_name": display_name,
             "trigger": trigger,
             "default_weight": 1.0,
-            "source": "auto-detectado (ComfyUI\\models\\loras)",
+            "source": "auto-detectado (ComfyUI/models/loras)",
             "license": "no verificada (archivo del usuario)",
             "notes": _lora_upload_notes(inferred),
         }
@@ -502,7 +502,7 @@ def _lora_slug(text: str) -> str:
 def _require_lora_filename(value: object) -> str:
     if not isinstance(value, str) or not value.strip():
         raise EngineError(f"filename requerido (recibido {value!r})")
-    if "/" in value or "\\" in value or "\x00" in value:
+    if "/" in value or "\x00" in value:
         raise EngineError(f"filename debe ser un nombre sin rutas: {value!r}")
     if (
         value in (".", "..")
@@ -676,7 +676,7 @@ async def api_loras_upload(request: Request, payload: dict = Body(...)) -> Any:
     entry = {
         "id": lora_id,
         "family": family,
-        "file": f"{family}\\{filename}",
+        "file": f"{family}/{filename}",
         "display_name": display_name,
         "trigger": trigger,
         "default_weight": 1.0,

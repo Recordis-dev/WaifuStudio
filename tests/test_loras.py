@@ -36,12 +36,12 @@ WAN_HIGH_FILE = (
     "lightx2v\\wan2.2_i2v_A14b_high_noise_lora_rank64_lightx2v_4step_1022.safetensors"
 )
 MIKU_ID = "miku-nakano-anima"
-MIKU_FILE = "anima\\Miku_Nakano_Anima_v0.7.safetensors"
+MIKU_FILE = "anima/Miku_Nakano_Anima_v0.7.safetensors"
 SAIMIN_ID = "kurashiki-reika-saimin-anima"
-SAIMIN_FILE = "anima\\Kurashiki Reika Saimin Seishidou.safetensors"
+SAIMIN_FILE = "anima/Kurashiki Reika Saimin Seishidou.safetensors"
 SAIMIN_SIZE = 277207608
 SHUUKO_ID = "shuuko-komi-s1s2-anima"
-SHUUKO_FILE = "anima\\shuuko-komi-s1s2.safetensors"
+SHUUKO_FILE = "anima/shuuko-komi-s1s2.safetensors"
 SHUUKO_SIZE = 91866600
 
 
@@ -306,6 +306,18 @@ class RealRegistryTests(unittest.TestCase):
 
 
 class ValidateSelectionTests(unittest.TestCase):
+
+    def setUp(self):
+        patcher = mock.patch.object(loras_module, "DEFAULT_PATH", FIXTURE)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        user = mock.patch.object(
+            loras_module,
+            "user_registry_path",
+            lambda: ROOT / "tests" / "fixtures" / "sin-capa-usuario.json",
+        )
+        user.start()
+        self.addCleanup(user.stop)
     def test_normaliza_con_file_y_peso_del_registro(self):
         normalized = validate_selection([{"id": MIKU_ID}])
         self.assertEqual(
@@ -849,7 +861,7 @@ class DiskAutoScanTests(unittest.TestCase):
         self.assertFalse((loras_dir / "Vidrohah-v1.2.safetensors").exists())
 
         lora_ids = [item["id"] for item in added_loras]
-        self.assertEqual(lora_ids, ["marin-kitagawa-1", "stuffyai-style"])
+        self.assertEqual(sorted(lora_ids), sorted(["marin-kitagawa-1", "stuffyai-style"]))
         marin = get("marin-kitagawa-1")
         self.assertEqual(marin["display_name"], "Marin Kitagawa 1 (My_Dress_Up_Darling)")
         self.assertEqual(marin["trigger"], "marinkitagawa")

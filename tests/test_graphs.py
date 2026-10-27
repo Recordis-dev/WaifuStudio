@@ -303,6 +303,24 @@ class ToImg2ImgTests(unittest.TestCase):
 
 
 class ApplyLorasTests(unittest.TestCase):
+
+    def setUp(self):
+        super().setUp()
+        from unittest import mock
+        from pathlib import Path
+        from app import loras as loras_module
+
+        self.loras_path = Path(__file__).resolve().parents[1] / 'tests' / 'fixtures' / 'loras.json'
+        patcher = mock.patch.object(
+            loras_module, "DEFAULT_PATH", self.loras_path
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        user = mock.patch.object(
+            loras_module, "user_registry_path", lambda: self.loras_path
+        )
+        user.start()
+        self.addCleanup(user.stop)
     def test_un_lora_estructura_exacta_y_rewire(self):
         graph = real_graph()
 
@@ -339,7 +357,7 @@ class ApplyLorasTests(unittest.TestCase):
 
         self.assertEqual(
             patched["lora_1"]["inputs"]["lora_name"],
-            "anima\\Kurashiki Reika Saimin Seishidou.safetensors",
+            "anima/Kurashiki Reika Saimin Seishidou.safetensors",
         )
         self.assertEqual(patched["lora_1"]["inputs"]["strength_model"], 0.8)
 
@@ -353,7 +371,7 @@ class ApplyLorasTests(unittest.TestCase):
 
         self.assertEqual(
             patched["lora_1"]["inputs"]["lora_name"],
-            "anima\\Miku_Nakano_Anima_v0.7.safetensors",
+            "anima/Miku_Nakano_Anima_v0.7.safetensors",
         )
         self.assertEqual(patched["lora_1"]["inputs"]["strength_model"], 1.0)
         self.assertEqual(patched["7"]["inputs"]["model"], ["lora_1", 0])

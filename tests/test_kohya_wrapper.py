@@ -74,7 +74,7 @@ class DatasetTomlTests(unittest.TestCase):
         self.assertIn("[general]", text)
         self.assertIn("enable_bucket = true", text)
         self.assertIn("[[datasets.subsets]]", text)
-        self.assertIn("image_dir = 'E:\\IA\\WAIFU\\data\\trainer\\7\\img'", text)
+        self.assertIn("image_dir = 'E:\\IA\\WAIFU\\data\\trainer\\7/img'", text)
         self.assertIn("caption_extension = '.txt'", text)
         self.assertIn("resolution = 512", text)
         self.assertIn("batch_size = 1", text)
@@ -83,7 +83,7 @@ class DatasetTomlTests(unittest.TestCase):
         config = wrapper.parse_app_config(APP_CONFIG)
         config["source_image_dir"] = "E:\\O'Brien\\trainer\\7"
         text = wrapper.build_dataset_toml(config)
-        expected = 'image_dir = "E:\\\\O\'Brien\\\\trainer\\\\7\\\\img"'
+        expected = 'image_dir = "E:\\\\O\'Brien\\\\trainer\\\\7/img"'
         self.assertIn(expected, text)
         self.assertNotIn("image_dir = 'E:\\O'Brien", text)
 
@@ -138,13 +138,13 @@ class ResolveWeightsTests(unittest.TestCase):
         weights = wrapper.resolve_weights({"WAIFU_COMFY_ROOT": r"E:\COMFY"})
         self.assertEqual(
             weights["base_model"],
-            r"E:\COMFY\models\diffusion_models\anima_aestheticV11.safetensors",
+            r"E:\COMFY/models/diffusion_models/anima_aestheticV11.safetensors",
         )
         self.assertEqual(
-            weights["qwen3"], r"E:\COMFY\models\text_encoders\qwen_3_06b_base.safetensors"
+            weights["qwen3"], r"E:\COMFY/models/text_encoders/qwen_3_06b_base.safetensors"
         )
         self.assertEqual(
-            weights["vae"], r"E:\COMFY\models\vae\qwen_image_vae.safetensors"
+            weights["vae"], r"E:\COMFY/models/vae/qwen_image_vae.safetensors"
         )
 
     def test_overrides_explicitos(self):

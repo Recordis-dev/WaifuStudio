@@ -2,7 +2,7 @@
 
 Sin `WAIFU_LLM_URL` en el entorno, la app es duena del ciclo de vida: la primera
 llamada al LLM (`/api/enhance`, `/api/motion`, vision) arranca
-`tools/llama.cpp/llama-server.exe` como proceso hijo en CPU (`-ngl 0`) con el
+`tools/llama.cpp/llama-server` como proceso hijo en CPU (`-ngl 0`) con el
 GGUF + mmproj del manifiesto, y el cierre de la app lo para. Con
 `WAIFU_LLM_URL` definida se respeta el modo externo: ni se arranca ni se mata
 nada. `probe_fn` y `spawn_fn` son inyectables para que los tests corran offline
@@ -30,7 +30,7 @@ PORT_ENV = "WAIFU_LLM_PORT"
 MODEL_ENV = "WAIFU_LLM_MODEL"
 MMPROJ_ENV = "WAIFU_LLM_MMPROJ"
 THREADS_ENV = "WAIFU_LLM_THREADS"
-SERVER_REL = "tools/llama.cpp/llama-server.exe"
+SERVER_REL = "tools/llama.cpp/llama-server"
 MODEL_REL = (
     "ComfyUI/models/llm/qwen35-9b-nsfw-captioning/"
     "qwen3.5-9b-nsfw-captioning-v5.Q4_K_M.gguf"
@@ -48,7 +48,7 @@ LOG_REL = "data/llm-server.log"
 DEFAULT_PORT = 8290
 DEFAULT_THREADS = max(4, min(8, (os.cpu_count() or 8) // 2))
 PROBE_TIMEOUT_S = 2.0
-DOWNLOAD_HINT = "& .\\.venv\\Scripts\\python.exe scripts\\download_llm.py"
+DOWNLOAD_HINT = "./.venv/bin/python scripts/download_llm.py"
 LOG_TAIL_LINES = 10
 KILL_WAIT_S = 10
 

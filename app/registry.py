@@ -1,7 +1,7 @@
 """Registro versionado de modelos locales (M8-10).
 
 Formato JSON: ``{"version": 1, "models": [ModelEntry, ...]}`` en
-``E:\\IA\\WAIFU\\registry\\models.json``. CPU, sin red ni GPU.
+``registry/models.json``. CPU, sin red ni GPU.
 CLI: ``python -m app.registry`` imprime ``id | family | unet | preprompt``.
 """
 

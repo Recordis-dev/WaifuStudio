@@ -6,4 +6,4 @@ uvicorn==0.53.0
 jinja2==3.1.6
 aiohttp==3.14.3
 Pillow==12.3.0
-# llama-cpp-python==0.3.35 (desactivado: el runtime LLM desde M12 es tools/llama.cpp/llama-server.exe y llama-cpp-python exige compilador C++/CMake en instalaciones limpias)
+# llama-cpp-python==0.3.35 (desactivado: el runtime LLM desde M12 es tools/llama.cpp/llama-server y llama-cpp-python exige compilador C++/CMake en instalaciones limpias)

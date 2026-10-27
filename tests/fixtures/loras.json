@@ -37,7 +37,7 @@
     {
       "id": "miku-nakano-anima",
       "family": "anima",
-      "file": "anima\\Miku_Nakano_Anima_v0.7.safetensors",
+      "file": "anima/Miku_Nakano_Anima_v0.7.safetensors",
       "display_name": "Miku Nakano (Anima v0.7)",
       "trigger": "M1kuNakan0_anima",
       "default_weight": 1.0,
@@ -48,7 +48,7 @@
     {
       "id": "kurashiki-reika-saimin-anima",
       "family": "anima",
-      "file": "anima\\Kurashiki Reika Saimin Seishidou.safetensors",
+      "file": "anima/Kurashiki Reika Saimin Seishidou.safetensors",
       "display_name": "Kurashiki Reika Saimin Seishidou (Anima)",
       "trigger": "kur4sh1k1r31k4",
       "default_weight": 1.0,
@@ -59,7 +59,7 @@
     {
       "id": "shuuko-komi-s1s2-anima",
       "family": "anima",
-      "file": "anima\\shuuko-komi-s1s2.safetensors",
+      "file": "anima/shuuko-komi-s1s2.safetensors",
       "display_name": "Shuuko Komi S1S2 (Anima)",
       "trigger": "shuuko komi",
       "default_weight": 1.0,
@@ -70,7 +70,7 @@
     {
       "id": "mina-ashido-1-anima",
       "family": "anima",
-      "file": "anima\\Mina Ashido 1.safetensors",
+      "file": "anima/Mina Ashido 1.safetensors",
       "display_name": "Mina Ashido 1 - AniAshido (Anima)",
       "trigger": "aniashido",
       "default_weight": 1.0,
@@ -81,7 +81,7 @@
     {
       "id": "mina-ashido-2-anima",
       "family": "anima",
-      "file": "anima\\Mina Ashido 2.safetensors",
+      "file": "anima/Mina Ashido 2.safetensors",
       "display_name": "Mina Ashido 2 - timeskip (Anima)",
       "trigger": "",
       "default_weight": 1.0,

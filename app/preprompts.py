@@ -1,7 +1,7 @@
 """Catalogo de preprompts de calidad por familia (M8-12) y propios (M9-D2).
 
 Textos certificados copiados EXACTOS del planner legacy certificado (retirado el
-2026-09-26; archivado en ``data\\gates\\m10\\evidencia-legacy``, fuera de git):
+2026-09-26; archivado en ``data/gates/m10/evidencia-legacy``, fuera de git):
 QUALITY_PREPROMPTS. Aqui solo se catalogan; aplicarlos al prompt es
 responsabilidad de F2.
 
